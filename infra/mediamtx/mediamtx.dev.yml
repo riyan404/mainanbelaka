@@ -1,0 +1,16 @@
+logLevel: info
+api: yes
+apiAddress: 127.0.0.1:9917
+rtsp: yes
+rtspAddress: :8517
+webrtc: yes
+webrtcAddress: :8917
+webrtcAllowOrigins: ["http://localhost:3417", "http://127.0.0.1:3417"]
+webrtcLocalUDPAddress: :8918
+hls: no
+pathDefaults:
+  rtspTransport: tcp
+  sourceOnDemand: yes
+  sourceOnDemandStartTimeout: 12s
+  sourceOnDemandCloseAfter: 10s
+paths: {}

@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DeviceType {
+  IP_CAMERA
+  NVR
+  DVR
+}
+
+enum ConnectionStatus {
+  UNTESTED
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+enum Availability {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Device {
+  id                 String           @id @default(cuid())
+  name               String
+  type               DeviceType
+  host               String
+  httpPort           Int              @default(80)
+  rtspPort           Int              @default(554)
+  usernameEncrypted  String
+  passwordEncrypted  String
+  manufacturer       String?
+  model              String?
+  serialNumber       String?
+  firmwareVersion    String?
+  connectionStatus   ConnectionStatus @default(UNTESTED)
+  lastCheckedAt      DateTime?
+  archivedAt         DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  cameras            CameraChannel[]
+
+  @@unique([host, httpPort])
+  @@index([archivedAt])
+}
+
+model CameraChannel {
+  id               String           @id @default(cuid())
+  deviceId         String
+  channelNumber    Int
+  name             String
+  location         String?
+  mainStreamPath   String
+  subStreamPath    String
+  mainCodec        String?
+  subCodec         String?
+  mainResolution   String?
+  subResolution    String?
+  mainFps          Float?
+  subFps           Float?
+  enabled          Boolean          @default(false)
+  availability     Availability     @default(AVAILABLE)
+  connectionStatus ConnectionStatus @default(UNTESTED)
+  lastTestedAt     DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  device           Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  groups           CameraGroup[]
+
+  @@unique([deviceId, channelNumber])
+  @@index([enabled, availability])
+}
+
+model Group {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String?
+  isDefault   Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  cameras     CameraGroup[]
+}
+
+model CameraGroup {
+  cameraChannelId String
+  groupId         String
+  camera          CameraChannel @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
+  group           Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([cameraChannelId, groupId])
+}
