@@ -53,7 +53,37 @@ MediaMTX API: 127.0.0.1:9917
 
 Ubah port atau kredensial development di `.env.dev`.
 
-## Menjalankan semua lewat Docker
+## Development Docker / OrbStack dengan hot reload
+
+Gunakan Compose development. Service berjalan dalam OrbStack, source project dimount ke container, lalu Nest dan Next watch perubahan file.
+
+```bash
+# Jangan gunakan port default; dipakai development native atau proyek lain.
+docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
+```
+
+Akses:
+
+```text
+Web:          http://localhost:3418
+API health:   http://localhost:3418/api/health
+Login:        admin / nilai ADMIN_PASSWORD di .env.dev
+MediaMTX:     http://localhost:8918
+
+Untuk perangkat LAN, ganti `localhost` dengan IP Mac. Contoh: `http://192.168.1.144:3418`. Untuk jaringan `10.0.92.0/24`, pakai `http://10.0.92.61:3418`. Web meneruskan `/api` ke backend internal agar login dan cookie tetap satu origin.
+
+Origin perangkat LAN harus terdaftar di `NEXT_ALLOWED_DEV_ORIGINS` (`.env.dev`) agar HMR dan static chunk Next.js dev tidak diblokir. URL live WebRTC di dashboard otomatis mengikuti host browser (IP Mac), bukan `localhost`.
+
+IP Mac juga harus terdaftar di `webrtcAdditionalHosts` pada `infra/mediamtx/mediamtx.orbstack.yml` agar kandidat ICE WebRTC mengumumkan IP LAN (bukan IP internal container). Perbarui daftar ini jika IP Mac berubah. WebRTC juga mengaktifkan fallback TCP/ICE (`webrtcLocalTCPAddress`) karena UDP forwarding OrbStack bisa tidak andal untuk perangkat LAN.
+```
+
+Stop tanpa menghapus data:
+
+```bash
+docker compose -f docker-compose.dev.yml --env-file .env.dev down
+```
+
+## Menjalankan semua lewat Docker production
 
 ```bash
 cp .env.example .env

@@ -18,6 +18,7 @@
     "@nestjs/core": "^11.1.6",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/schedule": "^12.0.1",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "argon2": "^0.44.0",

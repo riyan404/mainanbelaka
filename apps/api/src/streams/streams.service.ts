@@ -15,7 +15,11 @@ export class StreamsService {
 		private readonly probe: RtspProbeService,
 	) {}
 
-	async createSession(cameraId: string, quality: "main" | "sub") {
+	async createSession(
+		cameraId: string,
+		quality: "main" | "sub",
+		forwardedHost?: string,
+	) {
 		const camera = await this.prisma.cameraChannel.findUnique({
 			where: { id: cameraId },
 			include: { device: true },
@@ -74,15 +78,28 @@ export class StreamsService {
 		} catch {
 			throw new BadRequestException("Media gateway tidak tersedia");
 		}
-		const publicWebRtcUrl = process.env.MEDIAMTX_PUBLIC_WEBRTC_URL;
-		if (!publicWebRtcUrl)
-			throw new BadRequestException(
-				"MEDIAMTX_PUBLIC_WEBRTC_URL belum dikonfigurasi",
-			);
-		const publicBase = publicWebRtcUrl.replace(/\/$/, "");
+		const publicBase = this.buildPublicBase(forwardedHost);
 		return {
 			path: pathName,
 			url: `${publicBase}/${pathName}?controls=false&muted=true&autoplay=true&playsInline=true`,
 		};
+	}
+
+	private buildPublicBase(forwardedHost?: string): string {
+		const webRtcPort = process.env.MEDIAMTX_WEBRTC_PORT;
+		if (forwardedHost && webRtcPort) {
+			try {
+				const hostname = new URL(`http://${forwardedHost}`).hostname;
+				return `http://${hostname}:${webRtcPort}`;
+			} catch {
+				// Host tidak valid; lanjut ke fallback.
+			}
+		}
+		const fallback = process.env.MEDIAMTX_PUBLIC_WEBRTC_URL;
+		if (!fallback)
+			throw new BadRequestException(
+				"MEDIAMTX_PUBLIC_WEBRTC_URL belum dikonfigurasi",
+			);
+		return fallback.replace(/\/$/, "");
 	}
 }

@@ -7,7 +7,21 @@ webrtc: yes
 webrtcAddress: :8889
 webrtcAllowOrigins: ["*"]
 webrtcLocalUDPAddress: :8189
+# Fallback TCP/ICE untuk klien di balik NAT (Docker port-forward UDP bisa tidak andal).
+webrtcLocalTCPAddress: :8189
 hls: no
+authInternalUsers:
+  # Izinkan akses Control API dari container API (9997 tidak diexpose ke host).
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+      - action: pprof
 pathDefaults:
   rtspTransport: tcp
   sourceOnDemand: yes

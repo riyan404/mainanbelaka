@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AnalyticsModule } from "./analytics/analytics.module";
 import { AuthModule } from "./auth/auth.module";
 import { CamerasModule } from "./cameras/cameras.module";
 import { CommonModule } from "./common/common.module";
@@ -24,6 +25,7 @@ import { StreamsModule } from "./streams/streams.module";
 		GroupsModule,
 		DashboardModule,
 		StreamsModule,
+		AnalyticsModule,
 	],
 })
 export class AppModule {}

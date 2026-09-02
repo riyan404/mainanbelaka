@@ -24,6 +24,18 @@ enum Availability {
   UNAVAILABLE
 }
 
+enum Posture {
+  SITTING
+  STANDING
+  UNKNOWN
+}
+
+enum WorkerStatus {
+  IDLE
+  RUNNING
+  ERROR
+}
+
 model Admin {
   id           String   @id @default(cuid())
   username     String   @unique
@@ -79,6 +91,8 @@ model CameraChannel {
   updatedAt        DateTime         @updatedAt
   device           Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   groups           CameraGroup[]
+  analyticsZones   AnalyticsZone[]
+  analyticsStatus  AnalyticsModuleStatus?
 
   @@unique([deviceId, channelNumber])
   @@index([enabled, availability])
@@ -101,4 +115,47 @@ model CameraGroup {
   group           Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@id([cameraChannelId, groupId])
+}
+
+model AnalyticsZone {
+  id              String         @id @default(cuid())
+  cameraChannelId String
+  name            String
+  polygon         Json
+  trackPosture    Boolean        @default(false)
+  enabled         Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  camera          CameraChannel  @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
+  events          DwellEvent[]
+
+  @@index([cameraChannelId, enabled])
+}
+
+model DwellEvent {
+  id              String        @id @default(cuid())
+  zoneId          String
+  trackRef        String
+  posture         Posture?
+  enteredAt       DateTime
+  exitedAt        DateTime?
+  durationSeconds Int?
+  createdAt       DateTime      @default(now())
+  zone            AnalyticsZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId, enteredAt])
+  @@index([enteredAt])
+}
+
+model AnalyticsModuleStatus {
+  id               String         @id @default(cuid())
+  cameraChannelId  String         @unique
+  analyticsEnabled Boolean        @default(false)
+  sampleIntervalMs Int            @default(1000)
+  lastEventAt      DateTime?
+  workerStatus     WorkerStatus   @default(IDLE)
+  lastErrorMessage String?
+  snapshotPath     String?
+  updatedAt        DateTime       @updatedAt
+  camera           CameraChannel  @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
 }

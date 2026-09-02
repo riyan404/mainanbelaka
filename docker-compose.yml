@@ -21,6 +21,7 @@ services:
     ports:
       - "8889:8889"
       - "8189:8189/udp"
+      - "8189:8189/tcp"
     restart: unless-stopped
 
   api:
@@ -49,6 +50,27 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  analytics-worker:
+    build:
+      context: .
+      dockerfile: apps/analytics-worker/Dockerfile
+    environment:
+      ANALYTICS_API_URL: http://api:4000/api
+      ANALYTICS_WORKER_TOKEN: ${ANALYTICS_WORKER_TOKEN:-dev-analytics-token-change-me}
+      ANALYTICS_MEDIAMTX_RTSP_HOST: mediamtx
+      ANALYTICS_MEDIAMTX_RTSP_PORT: 8554
+      ANALYTICS_MODEL_PATH: ${ANALYTICS_MODEL_PATH:-yolo11n-pose.pt}
+      ANALYTICS_SAMPLE_INTERVAL_MS: ${ANALYTICS_SAMPLE_INTERVAL_MS:-1000}
+      ANALYTICS_SNAPSHOT_DIR: /tmp/snapshots
+    volumes:
+      - analytics_snapshots:/tmp/snapshots
+    depends_on:
+      api:
+        condition: service_started
+      mediamtx:
+        condition: service_started
+    restart: unless-stopped
+
   web:
     environment:
       API_INTERNAL_URL: http://api:4000/api
@@ -65,3 +87,4 @@ services:
 
 volumes:
   postgres_data:
+  analytics_snapshots:

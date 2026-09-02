@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { Camera } from "@/lib/api";
 import { api } from "@/lib/api";
 import { supportsHevcWebRtc } from "@/lib/hevc";
+import { LiveTrackingOverlay } from "./live-tracking-overlay";
 import { Button } from "./ui/button";
 import { StatusBadge } from "./ui/status-badge";
 
@@ -117,6 +118,7 @@ export function CameraTile({ camera }: { camera: Camera }) {
 					<Expand aria-hidden size={16} />
 				</Button>
 			</div>
+			<LiveTrackingOverlay cameraId={camera.id} />
 			<div className="camera-overlay">
 				<div>
 					<div className="camera-name">{camera.name}</div>

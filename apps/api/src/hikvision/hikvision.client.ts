@@ -5,6 +5,33 @@ import { parseChannels, parseDeviceInfo } from "./hikvision.parser";
 import { RtspProbeService } from "./rtsp-probe.service";
 import type { DetectionResult, HikvisionConnection } from "./hikvision.types";
 
+async function mapWithConcurrency<T, R>(
+	items: T[],
+	concurrency: number,
+	mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+	const results: R[] = [];
+	let nextIndex = 0;
+
+	const worker = async (): Promise<void> => {
+		while (nextIndex < items.length) {
+			const index = nextIndex;
+			nextIndex += 1;
+			const item = items[index];
+			if (item === undefined) break;
+			results[index] = await mapper(item, index);
+		}
+	};
+
+	const workerCount = Math.min(concurrency, items.length);
+	const workers: Promise<void>[] = [];
+	for (let i = 0; i < workerCount; i += 1) {
+		workers.push(worker());
+	}
+	await Promise.all(workers);
+	return results;
+}
+
 @Injectable()
 export class HikvisionClient {
 	constructor(private readonly probe: RtspProbeService) {}
@@ -64,8 +91,7 @@ export class HikvisionClient {
 			await this.get(connection, "/ISAPI/System/deviceInfo"),
 		);
 		const channels = await this.detectChannelList(connection);
-		const detected = [];
-		for (const channel of channels) {
+		const detected = await mapWithConcurrency(channels, 4, async (channel) => {
 			const mainStreamPath = buildHikvisionStreamPath(
 				channel.channelNumber,
 				"main",
@@ -78,8 +104,8 @@ export class HikvisionClient {
 				this.probe.probe(connection, mainStreamPath),
 				this.probe.probe(connection, subStreamPath),
 			]);
-			detected.push({ ...channel, mainStreamPath, subStreamPath, main, sub });
-		}
+			return { ...channel, mainStreamPath, subStreamPath, main, sub };
+		});
 		return { device, channels: detected };
 	}
 }

@@ -1,0 +1,132 @@
+name: cctv-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cctv_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-cctv}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cctv-dev-local-change-me}
+    ports:
+      - "127.0.0.1:${ORBSTACK_POSTGRES_PORT:-5518}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.20.0
+    volumes:
+      - ./infra/mediamtx/mediamtx.orbstack.yml:/mediamtx.yml:ro
+    ports:
+      - "${ORBSTACK_MEDIAMTX_WEBRTC_PORT:-8918}:8889"
+      - "8189:8189/udp"
+      - "8189:8189/tcp"
+
+  deps:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    command: npm ci --cache /tmp/npm-cache --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000
+    volumes:
+      - .:/workspace
+      - root_node_modules:/workspace/node_modules
+      - api_node_modules:/workspace/apps/api/node_modules
+      - web_node_modules:/workspace/apps/web/node_modules
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    env_file: .env.dev
+    environment:
+      NODE_ENV: development
+      API_PORT: 4000
+      WEB_ORIGIN: http://localhost:${ORBSTACK_WEB_PORT:-3418}
+      COOKIE_SECURE: "false"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cctv}:${POSTGRES_PASSWORD:-cctv-dev-local-change-me}@postgres:5432/${POSTGRES_DB:-cctv_dev}?schema=public
+      MEDIAMTX_API_URL: http://mediamtx:9997
+      MEDIAMTX_PUBLIC_WEBRTC_URL: http://localhost:${ORBSTACK_MEDIAMTX_WEBRTC_PORT:-8918}
+      MEDIAMTX_WEBRTC_PORT: ${ORBSTACK_MEDIAMTX_WEBRTC_PORT:-8918}
+      CHOKIDAR_USEPOLLING: "true"
+    command: >-
+      sh -ec 'npm run prisma:generate --workspace @cctv/api &&
+      npm run prisma:migrate --workspace @cctv/api &&
+      npm run dev --workspace @cctv/api'
+    ports:
+      - "${ORBSTACK_API_PORT:-4418}:4000"
+    volumes:
+      - .:/workspace
+      - root_node_modules:/workspace/node_modules
+      - api_node_modules:/workspace/apps/api/node_modules
+      - web_node_modules:/workspace/apps/web/node_modules
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/api/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+
+  analytics-worker:
+    build:
+      context: .
+      dockerfile: apps/analytics-worker/Dockerfile
+    environment:
+      ANALYTICS_API_URL: http://api:4000/api
+      ANALYTICS_WORKER_TOKEN: ${ANALYTICS_WORKER_TOKEN:-dev-analytics-token-change-me}
+      ANALYTICS_MEDIAMTX_RTSP_HOST: mediamtx
+      ANALYTICS_MEDIAMTX_RTSP_PORT: 8554
+      ANALYTICS_MODEL_PATH: ${ANALYTICS_MODEL_PATH:-yolo11n-pose.pt}
+      ANALYTICS_SAMPLE_INTERVAL_MS: ${ANALYTICS_SAMPLE_INTERVAL_MS:-1000}
+      ANALYTICS_SNAPSHOT_DIR: /tmp/snapshots
+    volumes:
+      - analytics_snapshots:/tmp/snapshots
+    depends_on:
+      api:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    environment:
+      NODE_ENV: development
+      API_INTERNAL_URL: http://api:4000/api
+      WATCHPACK_POLLING: "true"
+      NEXT_ALLOWED_DEV_ORIGINS: ${NEXT_ALLOWED_DEV_ORIGINS:-192.168.1.144,10.0.92.61,100.93.151.47}
+    command: npm run dev --workspace @cctv/web -- --hostname 0.0.0.0 --port 3000
+    ports:
+      - "${ORBSTACK_WEB_PORT:-3418}:3000"
+    volumes:
+      - .:/workspace
+      - root_node_modules:/workspace/node_modules
+      - api_node_modules:/workspace/apps/api/node_modules
+      - web_node_modules:/workspace/apps/web/node_modules
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  root_node_modules:
+  api_node_modules:
+  web_node_modules:
+  analytics_snapshots:

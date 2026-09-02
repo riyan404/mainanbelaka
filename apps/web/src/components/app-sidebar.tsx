@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	Activity,
 	Camera,
 	Group,
 	LayoutGrid,
@@ -17,6 +18,7 @@ const items = [
 	{ href: "/devices", label: "Perangkat", icon: MonitorCog },
 	{ href: "/cameras", label: "Kamera", icon: Camera },
 	{ href: "/groups", label: "Grup", icon: Group },
+	{ href: "/analytics", label: "Analitik", icon: Activity },
 	{ href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 

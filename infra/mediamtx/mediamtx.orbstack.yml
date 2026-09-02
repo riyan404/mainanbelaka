@@ -1,0 +1,36 @@
+logLevel: info
+api: yes
+apiAddress: :9997
+rtsp: yes
+rtspAddress: :8554
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigins: ["*"]
+webrtcLocalUDPAddress: :8189
+# Fallback TCP/ICE: lebih andal melewati NAT OrbStack untuk device LAN
+# (UDP forwarding OrbStack bisa bermasalah untuk lalu lintas dari luar).
+webrtcLocalTCPAddress: :8189
+# IP LAN Mac yang diumumkan sebagai kandidat ICE WebRTC,
+# agar device lain bisa menerima stream live (bukan container-internal IP).
+# Perbarui jika IP Mac berubah.
+webrtcAdditionalHosts: ["10.0.92.61", "192.168.1.144"]
+hls: no
+authInternalUsers:
+  # Dev only: izinkan akses Control API dari container API
+  # (API tidak diexpose ke host, hanya internal docker network).
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+      - action: pprof
+pathDefaults:
+  rtspTransport: tcp
+  sourceOnDemand: yes
+  sourceOnDemandStartTimeout: 12s
+  sourceOnDemandCloseAfter: 10s
+paths: {}
