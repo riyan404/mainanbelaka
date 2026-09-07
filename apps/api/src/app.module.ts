@@ -10,6 +10,7 @@ import { DevicesModule } from "./devices/devices.module";
 import { GroupsModule } from "./groups/groups.module";
 import { HealthModule } from "./health/health.module";
 import { HikvisionModule } from "./hikvision/hikvision.module";
+import { ShiftModule } from "./shift/shift.module";
 import { StreamsModule } from "./streams/streams.module";
 
 @Module({
@@ -26,6 +27,7 @@ import { StreamsModule } from "./streams/streams.module";
 		DashboardModule,
 		StreamsModule,
 		AnalyticsModule,
+		ShiftModule,
 	],
 })
 export class AppModule {}

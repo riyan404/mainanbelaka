@@ -15,6 +15,7 @@ import type { Response } from "express";
 import { AuthGuard } from "../auth/auth.guard";
 import {
 	CreateZoneDto,
+	EnableAnalyticsDto,
 	EventQueryDto,
 	SummaryQueryDto,
 	UpdateZoneDto,
@@ -51,8 +52,11 @@ export class AnalyticsController {
 	// ─── Module enable/disable ────────────────────────────────────
 
 	@Post("cameras/:cameraId/enable")
-	enable(@Param("cameraId") cameraId: string) {
-		return this.analytics.enableAnalytics(cameraId);
+	enable(
+		@Param("cameraId") cameraId: string,
+		@Body() dto: EnableAnalyticsDto,
+	) {
+		return this.analytics.enableAnalytics(cameraId, dto.mode ?? "POSE");
 	}
 
 	@Post("cameras/:cameraId/disable")

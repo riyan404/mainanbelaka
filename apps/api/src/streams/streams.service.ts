@@ -31,6 +31,20 @@ export class StreamsService {
 			camera.device.archivedAt
 		)
 			throw new BadRequestException("Kamera tidak aktif");
+
+		// Webcam (WHIP/ffmpeg): stream path langsung di MediaMTX
+		// Path di-ensure oleh reconcile cron (AnalyticsReconcileService).
+		// Tidak cek publisher aktif di sini — biarkan player handle 404 jika belum push.
+		if ((camera.device.type as string) === "WEBCAM" || (camera.device.type as string) === "RTSP_DIRECT") {
+			const webcamPath = camera.subStreamPath.replace(/^\//, "");
+			const publicBase = this.buildPublicBase(forwardedHost);
+			return {
+				path: webcamPath,
+				skipHevcCheck: true, // webcam pakai VP8/H264 bukan HEVC
+				url: `${publicBase}/${webcamPath}?controls=false&muted=true&autoplay=true&playsInline=true`,
+			};
+		}
+
 		const pathName = `camera-${camera.id}-${quality}`;
 		const source = this.probe.buildUrl(
 			{

@@ -106,7 +106,7 @@ export class AnalyticsService {
 
 	// ─── Module enable/disable ────────────────────────────────────
 
-	async enableAnalytics(cameraId: string) {
+	async enableAnalytics(cameraId: string, mode: "POSE" | "FACE" = "POSE") {
 		const camera = await this.prisma.cameraChannel.findUnique({
 			where: { id: cameraId },
 			include: { device: true },
@@ -119,24 +119,32 @@ export class AnalyticsService {
 		if (camera.device.archivedAt)
 			throw new BadRequestException("Perangkat sudah diarsipkan");
 
-		// Ensure MediaMTX analytics path exists
-		await this.ensureAnalyticsPath(
-			cameraId,
-			camera.device.host,
-			camera.device.rtspPort,
-			camera.subStreamPath,
-			this.credentials.decrypt(camera.device.usernameEncrypted),
-			this.credentials.decrypt(camera.device.passwordEncrypted),
-		);
+		// Webcam (WHIP/ffmpeg) sudah punya path publisher di MediaMTX —
+		// tidak perlu ensureAnalyticsPath yang butuh RTSP + credentials.
+		if (
+			(camera.device.type as string) !== "WEBCAM" &&
+			(camera.device.type as string) !== "RTSP_DIRECT"
+		) {
+			await this.ensureAnalyticsPath(
+				cameraId,
+				camera.device.host,
+				camera.device.rtspPort,
+				camera.subStreamPath,
+				this.credentials.decrypt(camera.device.usernameEncrypted),
+				this.credentials.decrypt(camera.device.passwordEncrypted),
+			);
+		}
 
 		return this.prisma.analyticsModuleStatus.upsert({
 			where: { cameraChannelId: cameraId },
 			create: {
 				cameraChannelId: cameraId,
 				analyticsEnabled: true,
+				analyticsMode: mode,
 			},
 			update: {
 				analyticsEnabled: true,
+				analyticsMode: mode,
 				workerStatus: "IDLE",
 				lastErrorMessage: null,
 			},
@@ -316,6 +324,7 @@ export class AnalyticsService {
 				camera: {
 					include: {
 						analyticsZones: { where: { enabled: true } },
+						device: { select: { type: true } },
 					},
 				},
 			},
@@ -326,7 +335,14 @@ export class AnalyticsService {
 			.map((s) => ({
 				cameraChannelId: s.cameraChannelId,
 				cameraName: s.camera.name,
+				analyticsMode: s.analyticsMode,
 				sampleIntervalMs: s.sampleIntervalMs,
+				// Webcam/RTSP_DIRECT: baca langsung dari stream path
+				rtspStreamPath:
+					(s.camera.device?.type as string) === "WEBCAM" ||
+					(s.camera.device?.type as string) === "RTSP_DIRECT"
+						? s.camera.subStreamPath.replace(/^\//, "")
+						: null,
 				zones: s.camera.analyticsZones.map((z) => ({
 					id: z.id,
 					name: z.name,
@@ -351,7 +367,28 @@ export class AnalyticsService {
 		let repaired = 0;
 		for (const status of statuses) {
 			const camera = status.camera;
-			if (!camera.enabled || camera.device.archivedAt) continue;
+			if (camera.device.archivedAt) continue;
+			// Webcam: re-ensure publisher path selalu — terlepas dari camera.enabled
+			if ((camera.device.type as string) === "WEBCAM") {
+				await this.ensureWebcamPublisherPath(
+					camera.subStreamPath.replace(/^\//, ""),
+				);
+				repaired += 1;
+				continue;
+			}
+			// RTSP_DIRECT: re-ensure pull path di MediaMTX
+			if ((camera.device.type as string) === "RTSP_DIRECT") {
+				const pathName = camera.subStreamPath.replace(/^\//, "");
+				// model field menyimpan URL RTSP asli
+				const rtspUrl = camera.device.model ?? "";
+				if (rtspUrl.startsWith("rtsp://")) {
+					await this.ensureRtspDirectPath(pathName, rtspUrl);
+					repaired += 1;
+				}
+				continue;
+			}
+			// NVR: skip jika kamera disabled
+			if (!camera.enabled) continue;
 			await this.ensureAnalyticsPath(
 				camera.id,
 				camera.device.host,
@@ -513,6 +550,71 @@ export class AnalyticsService {
 			}
 		} catch (error) {
 			this.logger.warn("MediaMTX tidak tersedia untuk analytics path", error);
+		}
+	}
+
+	/**
+	 * Daftarkan/refresh path webcam publisher di MediaMTX.
+	 * Dipanggil saat createWebcam, prepareWebcamPath, dan reconcile cron.
+	 * sourceOnDemand: false = path selalu siap terima WHIP/ffmpeg push.
+	 */
+	/**
+	 * Daftarkan/refresh path RTSP direct di MediaMTX.
+	 * sourceOnDemand: true = MediaMTX pull dari source hanya saat ada viewer.
+	 */
+	async ensureRtspDirectPath(pathName: string, rtspUrl: string): Promise<void> {
+		const base = process.env.MEDIAMTX_API_URL;
+		if (!base) return;
+		try {
+			const enc = encodeURIComponent(pathName);
+			const body = JSON.stringify({
+				source: rtspUrl,
+				rtspTransport: "tcp",
+				sourceOnDemand: true,
+			});
+			const headers = { "content-type": "application/json" };
+			const addRes = await fetch(`${base}/v3/config/paths/add/${enc}`, {
+				method: "POST",
+				headers,
+				body,
+				signal: AbortSignal.timeout(5000),
+			});
+			if (!addRes.ok) {
+				await fetch(`${base}/v3/config/paths/patch/${enc}`, {
+					method: "PATCH",
+					headers,
+					body,
+					signal: AbortSignal.timeout(5000),
+				});
+			}
+		} catch (error) {
+			this.logger.warn(`Gagal ensure RTSP direct path ${pathName}`, error);
+		}
+	}
+
+	async ensureWebcamPublisherPath(pathName: string): Promise<void> {
+		const base = process.env.MEDIAMTX_API_URL;
+		if (!base) return;
+		try {
+			const enc = encodeURIComponent(pathName);
+			const body = JSON.stringify({ sourceOnDemand: false });
+			const headers = { "content-type": "application/json" };
+			const addRes = await fetch(`${base}/v3/config/paths/add/${enc}`, {
+				method: "POST",
+				headers,
+				body,
+				signal: AbortSignal.timeout(5000),
+			});
+			if (!addRes.ok) {
+				await fetch(`${base}/v3/config/paths/patch/${enc}`, {
+					method: "PATCH",
+					headers,
+					body,
+					signal: AbortSignal.timeout(5000),
+				});
+			}
+		} catch (error) {
+			this.logger.warn(`Gagal ensure webcam path ${pathName}`, error);
 		}
 	}
 }

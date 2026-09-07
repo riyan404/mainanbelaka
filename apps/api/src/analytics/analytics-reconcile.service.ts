@@ -1,16 +1,26 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { AnalyticsService } from "./analytics.service";
 
 /**
  * Auto-repair path MediaMTX untuk kamera yang analitiknya aktif.
- * Berjalan tiap menit; memastikan path selalu punya source RTSP dengan kredensial.
+ * - Saat startup (OnModuleInit): reconcile semua path langsung
+ * - Tiap menit (Cron): ensure path tidak hilang setelah MediaMTX restart
+ *
+ * NVR: re-ensure RTSP source path
+ * Webcam: re-ensure publisher path (sourceOnDemand: false)
  */
 @Injectable()
-export class AnalyticsReconcileService {
+export class AnalyticsReconcileService implements OnModuleInit {
 	private readonly logger = new Logger(AnalyticsReconcileService.name);
 
 	constructor(private readonly analytics: AnalyticsService) {}
+
+	/** Reconcile segera saat API start — pastikan semua path sudah terdaftar di MediaMTX. */
+	async onModuleInit(): Promise<void> {
+		// Delay 5 detik supaya MediaMTX sudah siap menerima request
+		setTimeout(() => void this.reconcile(), 5000);
+	}
 
 	@Cron(CronExpression.EVERY_MINUTE)
 	async reconcile(): Promise<void> {

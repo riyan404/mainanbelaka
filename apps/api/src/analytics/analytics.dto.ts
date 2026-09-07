@@ -215,3 +215,10 @@ export class LiveStateDto {
 	@Type(() => LiveTrackDto)
 	tracks!: LiveTrackDto[];
 }
+
+export class EnableAnalyticsDto {
+	/** Mode analitik: POSE (tubuh/postur, default) atau FACE (wajah/kehadiran). */
+	@IsIn(["POSE", "FACE"])
+	@IsOptional()
+	mode?: "POSE" | "FACE";
+}
