@@ -5,7 +5,13 @@ rtsp: yes
 rtspAddress: :8517
 webrtc: yes
 webrtcAddress: :8917
-webrtcAllowOrigins: ["http://localhost:3417", "http://127.0.0.1:3417"]
+webrtcAllowOrigins:
+  [
+    "http://localhost:3417",
+    "http://127.0.0.1:3417",
+    "http://localhost:3418",
+    "http://127.0.0.1:3418",
+  ]
 webrtcLocalUDPAddress: :8918
 hls: no
 pathDefaults:
