@@ -9,6 +9,8 @@ import { PrismaService } from "../database/prisma.service";
 import { RtspProbeService } from "../hikvision/rtsp-probe.service";
 import type { UpdateCameraDto } from "./cameras.dto";
 
+const DEFAULT_PAGE_SIZE = 25;
+
 @Injectable()
 export class CamerasService {
 	constructor(
@@ -17,28 +19,52 @@ export class CamerasService {
 		private readonly probe: RtspProbeService,
 	) {}
 
-	list(search?: string, enabled?: boolean) {
-		return this.prisma.cameraChannel.findMany({
-			where: {
-				...(enabled === undefined ? {} : { enabled }),
-				...(search
-					? {
-							OR: [
-								{ name: { contains: search, mode: "insensitive" } },
-								{ location: { contains: search, mode: "insensitive" } },
-								{ device: { name: { contains: search, mode: "insensitive" } } },
-							],
-						}
-					: {}),
-			},
-			include: {
-				device: {
-					select: { id: true, name: true, host: true, archivedAt: true },
+	async list(
+		search?: string,
+		enabled?: boolean,
+		page = 1,
+		pageSize = DEFAULT_PAGE_SIZE,
+	) {
+		const where = {
+			...(enabled === undefined ? {} : { enabled }),
+			...(search
+				? {
+						OR: [
+							{ name: { contains: search, mode: "insensitive" as const } },
+							{ location: { contains: search, mode: "insensitive" as const } },
+							{
+								device: {
+									name: { contains: search, mode: "insensitive" as const },
+								},
+							},
+						],
+					}
+				: {}),
+		};
+		const [items, total] = await Promise.all([
+			this.prisma.cameraChannel.findMany({
+				where,
+				include: {
+					device: {
+						select: { id: true, name: true, host: true, archivedAt: true },
+					},
+					groups: { include: { group: true } },
 				},
-				groups: { include: { group: true } },
+				orderBy: { name: "asc" },
+				skip: (page - 1) * pageSize,
+				take: pageSize,
+			}),
+			this.prisma.cameraChannel.count({ where }),
+		]);
+		return {
+			items,
+			pagination: {
+				page,
+				pageSize,
+				total,
+				pages: Math.ceil(total / pageSize),
 			},
-			orderBy: { name: "asc" },
-		});
+		};
 	}
 
 	async update(id: string, dto: UpdateCameraDto) {
@@ -101,19 +127,23 @@ export class CamerasService {
 		if (enabled) {
 			if (camera.availability !== "AVAILABLE" || camera.device.archivedAt)
 				throw new BadRequestException("Kamera tidak tersedia");
-			const result = await this.test(id);
-			if (!result.valid) {
-				const failures = [
-					!result.main.available || !isRequiredVideoCodec(result.main.codec)
-						? `main=${result.main.codec ?? "tidak tersedia"}`
-						: undefined,
-					!result.sub.available || !isRequiredVideoCodec(result.sub.codec)
-						? `sub=${result.sub.codec ?? "tidak tersedia"}`
-						: undefined,
-				].filter(Boolean);
-				throw new BadRequestException(
-					`Main dan sub-stream wajib H.265/HEVC. Gagal: ${failures.join(", ")}`,
-				);
+
+			// Webcam (WHIP/ffmpeg) tidak punya RTSP — skip validasi probe & codec
+			if ((camera.device.type as string) !== "WEBCAM" && (camera.device.type as string) !== "RTSP_DIRECT") {
+				const result = await this.test(id);
+				if (!result.valid) {
+					const failures = [
+						!result.main.available || !isRequiredVideoCodec(result.main.codec)
+							? `main=${result.main.codec ?? "tidak tersedia"}`
+							: undefined,
+						!result.sub.available || !isRequiredVideoCodec(result.sub.codec)
+							? `sub=${result.sub.codec ?? "tidak tersedia"}`
+							: undefined,
+					].filter(Boolean);
+					throw new BadRequestException(
+						`Main dan sub-stream wajib H.265/HEVC. Gagal: ${failures.join(", ")}`,
+					);
+				}
 			}
 		}
 		const updated = await this.prisma.cameraChannel.update({

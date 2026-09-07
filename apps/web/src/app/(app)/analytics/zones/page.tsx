@@ -1,4 +1,6 @@
 "use client";
+import { Pagination } from "@/components/ui/pagination";
+import { useClientPagination } from "@/hooks/use-client-pagination";
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -21,6 +23,7 @@ function ZonesContent() {
 	const cameraId = searchParams.get("cameraId") ?? "";
 	const [camera, setCamera] = useState<CameraInfo | null>(null);
 	const [zones, setZones] = useState<AnalyticsZone[]>([]);
+	const pg = useClientPagination(zones, 20);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 
@@ -42,7 +45,7 @@ function ZonesContent() {
 				return;
 			}
 			try {
-				const cameras = await api<CameraInfo[]>("/cameras");
+				const cameras = (await api<import("@/lib/api").Paginated<CameraInfo>>("/cameras?pageSize=500")).items;
 				const found = cameras.find((c) => c.id === cameraId);
 				if (!found) {
 					setError("Kamera tidak ditemukan");
@@ -124,6 +127,7 @@ function ZonesContent() {
 					onZonesChange={loadZones}
 				/>
 			)}
+			<Pagination page={pg.page} pages={pg.pages} total={pg.total} pageSize={pg.pageSize} onChange={pg.changePage} />
 		</main>
 	);
 }

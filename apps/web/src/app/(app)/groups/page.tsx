@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
+import { useClientPagination } from "@/hooks/use-client-pagination";
 import { api } from "@/lib/api";
 
 interface GroupRow {
@@ -16,6 +18,7 @@ export default function GroupsPage() {
 	const [name, setName] = useState("");
 	const load = () => void api<GroupRow[]>("/groups").then(setGroups);
 	useEffect(load, []);
+	const pg = useClientPagination(groups, 20);
 	return (
 		<main className="page">
 			<header className="page-head">
@@ -59,7 +62,7 @@ export default function GroupsPage() {
 						</tr>
 					</thead>
 					<tbody>
-						{groups.map((group) => (
+						{pg.slice.map((group) => (
 							<tr key={group.id}>
 								<td data-label="Nama">{group.name}</td>
 								<td data-label="Deskripsi">{group.description || "—"}</td>
@@ -84,6 +87,7 @@ export default function GroupsPage() {
 					</tbody>
 				</table>
 			</div>
+			<Pagination page={pg.page} pages={pg.pages} total={pg.total} pageSize={pg.pageSize} onChange={pg.changePage} />
 		</main>
 	);
 }

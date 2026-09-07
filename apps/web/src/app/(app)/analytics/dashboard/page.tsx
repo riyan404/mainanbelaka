@@ -2,6 +2,7 @@
 
 import { BarChart3, Clock, TrendingUp, Users } from "lucide-react";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { Pagination } from "@/components/ui/pagination";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
 	type AnalyticsZone,
@@ -85,7 +86,7 @@ function DashboardContent() {
 		async function init() {
 			try {
 				const [cams, zns] = await Promise.all([
-					api<CameraInfo[]>("/cameras"),
+					api<import("@/lib/api").Paginated<CameraInfo>>("/cameras?pageSize=500").then((r) => r.items),
 					fetchZones(),
 				]);
 				setCameras(cams);
@@ -342,35 +343,13 @@ function DashboardContent() {
 					</div>
 
 					{/* Pagination */}
-					{eventsData.pagination.pages > 1 && (
-						<div
-							style={{
-								display: "flex",
-								justifyContent: "center",
-								gap: 8,
-								marginTop: 16,
-								alignItems: "center",
-							}}
-						>
-							<button
-								disabled={page <= 1}
-								onClick={() => setPage(page - 1)}
-								style={paginationBtnStyle}
-							>
-								← Prev
-							</button>
-							<span style={{ color: "#737373", fontSize: 13 }}>
-								{page} / {eventsData.pagination.pages}
-							</span>
-							<button
-								disabled={page >= eventsData.pagination.pages}
-								onClick={() => setPage(page + 1)}
-								style={paginationBtnStyle}
-							>
-								Next →
-							</button>
-						</div>
-					)}
+					<Pagination
+						page={eventsData.pagination.page}
+						pages={eventsData.pagination.pages}
+						total={eventsData.pagination.total}
+						pageSize={eventsData.pagination.pageSize}
+						onChange={setPage}
+					/>
 				</>
 			) : (
 				!loading && (
@@ -499,16 +478,6 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
 	padding: "8px 12px",
 	color: "#a3a3a3",
-};
-
-const paginationBtnStyle: React.CSSProperties = {
-	padding: "6px 12px",
-	borderRadius: 6,
-	border: "1px solid #404040",
-	background: "transparent",
-	color: "#d4d4d4",
-	fontSize: 13,
-	cursor: "pointer",
 };
 
 export default function AnalyticsDashboardPage() {

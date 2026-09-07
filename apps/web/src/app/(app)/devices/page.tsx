@@ -1,10 +1,12 @@
 "use client";
 
-import { Archive, Plus, RefreshCw } from "lucide-react";
+import { Archive, Link2, Plus, RefreshCw, Webcam } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useClientPagination } from "@/hooks/use-client-pagination";
 import { api } from "@/lib/api";
 
 interface Device {
@@ -21,6 +23,7 @@ export default function DevicesPage() {
 	const [devices, setDevices] = useState<Device[]>([]);
 	const load = () => void api<Device[]>("/devices").then(setDevices);
 	useEffect(load, []);
+	const pg = useClientPagination(devices, 20);
 	return (
 		<main className="page">
 			<header className="page-head">
@@ -29,10 +32,22 @@ export default function DevicesPage() {
 					<p>Kelola NVR, DVR, dan kamera IP Hikvision.</p>
 				</div>
 				<div className="toolbar-spacer" />
+				<Button variant="secondary" asChild>
+					<Link href="/webcams/new">
+						<Webcam aria-hidden size={15} />
+						Tambah Webcam
+					</Link>
+				</Button>
+				<Button variant="secondary" asChild>
+					<Link href="/devices/new/rtsp">
+						<Link2 aria-hidden size={15} />
+						Tambah Sumber RTSP
+					</Link>
+				</Button>
 				<Button asChild>
 					<Link href="/devices/new">
 						<Plus aria-hidden size={15} />
-						Tambah
+						Tambah NVR/IP Cam
 					</Link>
 				</Button>
 			</header>
@@ -50,7 +65,7 @@ export default function DevicesPage() {
 						</tr>
 					</thead>
 					<tbody>
-						{devices.map((device) => (
+						{pg.slice.map((device) => (
 							<tr key={device.id}>
 								<td data-label="Nama">{device.name}</td>
 								<td data-label="Jenis">{device.type}</td>
@@ -93,6 +108,13 @@ export default function DevicesPage() {
 					</tbody>
 				</table>
 			</div>
+			<Pagination
+				page={pg.page}
+				pages={pg.pages}
+				total={pg.total}
+				pageSize={pg.pageSize}
+				onChange={pg.changePage}
+			/>
 		</main>
 	);
 }
