@@ -20,10 +20,13 @@ export interface AnalyticsZone {
 	_count?: { events: number };
 }
 
+export type AnalyticsMode = "POSE" | "FACE";
+
 export interface AnalyticsModuleStatus {
 	id: string;
 	cameraChannelId: string;
 	analyticsEnabled: boolean;
+	analyticsMode: AnalyticsMode;
 	sampleIntervalMs: number;
 	lastEventAt?: string;
 	workerStatus: "IDLE" | "RUNNING" | "ERROR";
@@ -128,9 +131,13 @@ export function deleteZone(id: string) {
 	return api(`/analytics/zones/${id}`, { method: "DELETE" });
 }
 
-export function enableAnalytics(cameraId: string) {
+export function enableAnalytics(
+	cameraId: string,
+	mode: AnalyticsMode = "POSE",
+) {
 	return api<AnalyticsModuleStatus>(`/analytics/cameras/${cameraId}/enable`, {
 		method: "POST",
+		body: JSON.stringify({ mode }),
 	});
 }
 

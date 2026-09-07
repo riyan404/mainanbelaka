@@ -5,7 +5,7 @@ import type { CameraLiveState, LiveTrack, LiveZone } from "@/lib/analytics";
 import { fetchCameraLiveState } from "@/lib/analytics";
 
 /** Interval polling live state (harus < TTL 15s di server). */
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 1000;
 
 export function postureLabel(posture: string | null): string {
 	switch (posture) {

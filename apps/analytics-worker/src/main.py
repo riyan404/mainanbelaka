@@ -33,29 +33,46 @@ def main() -> None:
     start_health_server(state)
 
     logger.info("Analytics Worker starting...")
-    logger.info("Model path: %s", config.model_path)
-    logger.info("API URL: %s", config.api_url)
-    logger.info("Sample interval: %dms", config.sample_interval_ms)
-    logger.info("MediaMTX: %s:%d", config.mediamtx_rtsp_host, config.mediamtx_rtsp_port)
+    logger.info("Pose model : %s", config.model_path)
+    logger.info("Face model : %s", config.face_model_path)
+    logger.info("API URL    : %s", config.api_url)
+    logger.info("Sample     : %dms", config.sample_interval_ms)
+    logger.info("MediaMTX   : %s:%d", config.mediamtx_rtsp_host, config.mediamtx_rtsp_port)
 
-    # Load YOLO model
-    model = None
+    # Load model POSE (wajib)
+    pose_model = None
     try:
         from ultralytics import YOLO
-
-        model = YOLO(config.model_path)
+        pose_model = YOLO(config.model_path)
         state.model_loaded = True
-        logger.info("Model loaded: %s", config.model_path)
+        logger.info("Pose model loaded: %s", config.model_path)
     except Exception:
-        state.last_error = "Gagal memuat model"
-        logger.exception("Gagal memuat model %s", config.model_path)
+        state.last_error = "Gagal memuat model POSE"
+        logger.exception("Gagal memuat model POSE %s", config.model_path)
 
-    if model is not None:
+    # Load model FACE (opsional — skip jika tidak tersedia)
+    face_model = None
+    try:
+        from ultralytics import YOLO as _YOLO  # noqa: PLC0415
+        face_model = _YOLO(config.face_model_path)
+        logger.info("Face model loaded: %s", config.face_model_path)
+    except Exception:
+        logger.warning(
+            "Model FACE tidak tersedia (%s) — kamera mode FACE akan skip.",
+            config.face_model_path,
+        )
+
+    if pose_model is not None:
         from src.api_client import ApiClient
         from src.orchestrator import Orchestrator
 
         api_client = ApiClient()
-        orchestrator = Orchestrator(model, api_client, state)
+        orchestrator = Orchestrator(
+            pose_model=pose_model,
+            face_model=face_model,
+            api_client=api_client,
+            health_state=state,
+        )
         orchestrator.start()
 
         logger.info("Worker ready. Menunggu shutdown signal...")

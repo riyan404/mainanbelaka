@@ -33,6 +33,8 @@ class CameraPipeline:
         sample_interval_ms: int,
         model: Any,
         api_client: ApiClient,
+        analytics_mode: str = "POSE",
+        rtsp_stream_path: str | None = None,
     ) -> None:
         self.camera_id = camera_id
         self.camera_name = camera_name
@@ -40,11 +42,15 @@ class CameraPipeline:
         self.sample_interval_ms = sample_interval_ms
         self.model = model
         self.api_client = api_client
+        # "POSE" = person body + postur | "FACE" = deteksi wajah/kehadiran saja
+        self.analytics_mode = analytics_mode.upper()
 
         self.source = MediaMtxSource(
             host=config.mediamtx_rtsp_host,
             port=config.mediamtx_rtsp_port,
             camera_id=camera_id,
+            # Webcam: override path langsung ke stream (bukan analytics sub-stream NVR)
+            custom_path=rtsp_stream_path,
         )
         self.sampler = FrameSampler(self.source, sample_interval_ms)
         self.event_manager = EventManager(
@@ -132,12 +138,21 @@ class CameraPipeline:
         self.api_client.update_worker_status(self.camera_id, "IDLE")
 
     def _process_frame(self, frame: np.ndarray, snapshot_path: str) -> None:
-        """Proses satu frame: detect + track + zone match + posture."""
+        """Dispatch ke pipeline POSE atau FACE sesuai mode kamera."""
         # Save snapshot on first frame
         if not self.source._first_frame_saved:
             if self.source.save_snapshot(frame, snapshot_path):
                 self.api_client.upload_snapshot(self.camera_id, snapshot_path)
 
+        if self.analytics_mode == "FACE":
+            self._process_frame_face(frame)
+        else:
+            self._process_frame_pose(frame)
+
+    # ── POSE pipeline (person body + postur) ──────────────────────────────────
+
+    def _process_frame_pose(self, frame: np.ndarray) -> None:
+        """Proses satu frame: detect person + track + zone match + posture."""
         h, w = frame.shape[:2]
 
         # Run YOLO detection + tracking (filter confidence rendah = false positive)
@@ -234,6 +249,90 @@ class CameraPipeline:
             self._buffer_events(closed)
 
         # Expire lost tracks
+        self._expire_and_buffer()
+
+    # ── FACE pipeline (deteksi wajah / kehadiran di depan PC) ───────────────────
+
+    def _process_frame_face(self, frame: np.ndarray) -> None:
+        """Proses satu frame mode FACE: deteksi wajah + zone match + dwell event.
+
+        Model FACE mengembalikan bounding box wajah (bukan keypoint).
+        Postur tidak diklasifikasi — event hanya mencatat kehadiran (presence).
+        Centroid = center bbox wajah (bukan bottom, karena wajah biasanya
+        terpotong di tepi atas frame).
+        """
+        h, w = frame.shape[:2]
+
+        results = self.model.track(
+            frame,
+            persist=True,
+            conf=config.detection_conf_threshold,
+            imgsz=config.detection_imgsz,
+            tracker="bytetrack.yaml",
+            verbose=False,
+        )
+
+        if not results or len(results) == 0:
+            self._expire_and_buffer()
+            return
+
+        result = results[0]
+        if result.boxes is None or result.boxes.id is None:
+            self._expire_and_buffer()
+            return
+
+        track_ids = result.boxes.id.cpu().numpy().astype(int)
+        bboxes    = result.boxes.xyxy.cpu().numpy()
+        confidences = (
+            result.boxes.conf.cpu().numpy()
+            if result.boxes.conf is not None else None
+        )
+
+        for i in range(len(track_ids)):
+            track_ref = str(track_ids[i])
+            bbox      = bboxes[i]
+
+            if confidences is not None and i < len(confidences):
+                try:
+                    if float(confidences[i]) < config.detection_conf_threshold:
+                        continue
+                except (TypeError, ValueError, IndexError):
+                    continue
+
+            try:
+                rel_bbox = (
+                    float(bbox[0] / w),
+                    float(bbox[1] / h),
+                    float(bbox[2] / w),
+                    float(bbox[3] / h),
+                )
+            except (ZeroDivisionError, ValueError, TypeError, IndexError):
+                logger.debug("Invalid bbox face track %s, dilewati", track_ref)
+                continue
+
+            # Gunakan center bbox (bukan bottom) untuk wajah yang sering terpotong
+            cx = (rel_bbox[0] + rel_bbox[2]) / 2
+            cy = (rel_bbox[1] + rel_bbox[3]) / 2
+            centroid = (cx, cy)
+
+            matched_zones = match_zones(centroid, self.zones, bbox=rel_bbox)
+            zone_ids = [z.id for z in matched_zones]
+
+            # Mode FACE: postur tidak diklasifikasi, langsung None
+            closed = self.event_manager.track_seen(
+                track_ref,
+                zone_ids,
+                postures=None,
+                person_box=PersonBox(
+                    x1=rel_bbox[0],
+                    y1=rel_bbox[1],
+                    x2=rel_bbox[2],
+                    y2=rel_bbox[3],
+                    posture=None,
+                ),
+            )
+            self._buffer_events(closed)
+
         self._expire_and_buffer()
 
     def _expire_and_buffer(self) -> None:

@@ -20,11 +20,14 @@ class MediaMtxSource:
         camera_id: str,
         reconnect_backoff_base: float = 2.0,
         reconnect_backoff_max: float = 60.0,
+        custom_path: str | None = None,
     ) -> None:
         self.host = host
         self.port = port
         self.camera_id = camera_id
-        self.path = f"analytics-camera-{camera_id}-sub"
+        # custom_path: override untuk webcam (pakai stream path langsung)
+        # None: pakai konvensi analytics sub-stream NVR
+        self.path = custom_path if custom_path else f"analytics-camera-{camera_id}-sub"
         self.url = f"rtsp://{host}:{port}/{self.path}"
         self._cap: cv2.VideoCapture | None = None
         self._backoff_base = reconnect_backoff_base

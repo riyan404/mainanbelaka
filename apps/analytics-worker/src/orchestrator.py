@@ -24,11 +24,13 @@ class Orchestrator:
 
     def __init__(
         self,
-        model: Any,
+        pose_model: Any,
         api_client: ApiClient,
         health_state: HealthState,
+        face_model: Any | None = None,
     ) -> None:
-        self.model = model
+        self.pose_model = pose_model
+        self.face_model = face_model
         self.api_client = api_client
         self.health_state = health_state
         self._pipelines: dict[str, CameraPipeline] = {}
@@ -108,7 +110,28 @@ class Orchestrator:
                     existing.zones = zones
                     continue
 
+                # Pilih model sesuai mode analitik
+                analytics_mode = cam.get("analyticsMode", "POSE")
+                if analytics_mode == "FACE":
+                    if self.face_model is None:
+                        logger.warning(
+                            "Mode FACE diminta untuk kamera %s tapi model FACE"
+                            " tidak tersedia, skip.",
+                            cam["cameraName"],
+                        )
+                        self.api_client.update_worker_status(
+                            camera_id,
+                            "ERROR",
+                            "Model FACE tidak tersedia di worker",
+                        )
+                        continue
+                    selected_model = self.face_model
+                else:
+                    selected_model = self.pose_model
+
                 # Start new pipeline
+                # Webcam: baca dari path stream langsung (bukan sub-stream NVR)
+                rtsp_stream_path = cam.get("rtspStreamPath")  # None = NVR, str = webcam
                 pipeline = CameraPipeline(
                     camera_id=camera_id,
                     camera_name=cam["cameraName"],
@@ -116,8 +139,10 @@ class Orchestrator:
                     sample_interval_ms=cam.get(
                         "sampleIntervalMs", config.sample_interval_ms
                     ),
-                    model=self.model,
+                    model=selected_model,
+                    analytics_mode=analytics_mode,
                     api_client=self.api_client,
+                    rtsp_stream_path=rtsp_stream_path,
                 )
                 self._pipelines[camera_id] = pipeline
                 pipeline.start()

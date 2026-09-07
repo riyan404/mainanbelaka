@@ -17,29 +17,30 @@ export function CameraTile({ camera }: { camera: Camera }) {
 
 	useEffect(() => {
 		let active = true;
-		void supportsHevcWebRtc()
-			.then((supported) => {
-				if (!supported) {
-					throw new Error(
-						"Browser atau perangkat ini tidak mendukung WebRTC H.265/HEVC",
-					);
-				}
-				return api<{ url: string }>(
+		async function loadStream() {
+			try {
+				const result = await api<{ url: string; skipHevcCheck?: boolean }>(
 					`/streams/${camera.id}/session?quality=${quality}`,
 					{ method: "POST" },
 				);
-			})
-			.then((result) => {
+				// Webcam tidak pakai HEVC — skip HEVC check
+				if (!result.skipHevcCheck) {
+					const supported = await supportsHevcWebRtc();
+					if (!supported)
+						throw new Error(
+							"Browser atau perangkat ini tidak mendukung WebRTC H.265/HEVC",
+						);
+				}
 				if (active) setStream({ url: result.url, error: "" });
-			})
-			.catch((value) => {
-				if (active) {
+			} catch (value) {
+				if (active)
 					setStream({
 						url: "",
 						error: value instanceof Error ? value.message : "Stream gagal",
 					});
-				}
-			});
+			}
+		}
+		void loadStream();
 		return () => {
 			active = false;
 		};

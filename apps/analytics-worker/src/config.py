@@ -11,7 +11,8 @@ class WorkerConfig(BaseSettings):
     worker_token: str = ""
 
     # Model YOLO
-    model_path: str = "yolo11n-pose.pt"
+    model_path: str = "yolo11n-pose.pt"        # mode POSE: person + keypoint
+    face_model_path: str = "yolov8n-face.pt"   # mode FACE: deteksi wajah (auto-download)
 
     # Ambang confidence deteksi (di bawah ini = false positive, dibuang)
     detection_conf_threshold: float = 0.30
