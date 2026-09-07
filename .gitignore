@@ -16,3 +16,9 @@ apps/api/prisma/*.db
 .playwright-mcp/
 auto.crt
 auto.key
+# Screenshot artifacts
+*.png
+*.jpg
+!docs/**/*.png
+!docs/**/*.jpg
+!apps/web/public/**
