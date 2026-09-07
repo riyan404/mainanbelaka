@@ -8,6 +8,7 @@ import {
 	LogOut,
 	MonitorCog,
 	Settings,
+	CalendarClock,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -19,6 +20,7 @@ const items = [
 	{ href: "/cameras", label: "Kamera", icon: Camera },
 	{ href: "/groups", label: "Grup", icon: Group },
 	{ href: "/analytics", label: "Analitik", icon: Activity },
+	{ href: "/shifts", label: "Shift", icon: CalendarClock },
 	{ href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 

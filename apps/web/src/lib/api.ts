@@ -18,6 +18,18 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 	return response.json() as Promise<T>;
 }
 
+export interface Pagination {
+	page: number;
+	pageSize: number;
+	total: number;
+	pages: number;
+}
+
+export interface Paginated<T> {
+	items: T[];
+	pagination: Pagination;
+}
+
 export interface Camera {
 	id: string;
 	name: string;
