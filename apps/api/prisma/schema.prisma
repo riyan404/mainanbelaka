@@ -10,6 +10,8 @@ enum DeviceType {
   IP_CAMERA
   NVR
   DVR
+  WEBCAM      // kamera lokal via WHIP (browser WebRTC) atau ffmpeg bridge
+  RTSP_DIRECT // RTSP URL langsung tanpa Hikvision ISAPI (mis. screen capture, IP cam sederhana)
 }
 
 enum ConnectionStatus {
@@ -34,6 +36,11 @@ enum WorkerStatus {
   IDLE
   RUNNING
   ERROR
+}
+
+enum AnalyticsMode {
+  POSE   // deteksi tubuh penuh + postur duduk/berdiri (default, CCTV ruangan)
+  FACE   // deteksi wajah/kehadiran di depan kamera (PC kasir)
 }
 
 model Admin {
@@ -93,6 +100,7 @@ model CameraChannel {
   groups           CameraGroup[]
   analyticsZones   AnalyticsZone[]
   analyticsStatus  AnalyticsModuleStatus?
+  shiftSchedules   ShiftSchedule[]
 
   @@unique([deviceId, channelNumber])
   @@index([enabled, availability])
@@ -132,6 +140,25 @@ model AnalyticsZone {
   @@index([cameraChannelId, enabled])
 }
 
+// ─── Shift Schedule ─────────────────────────────────────────────────────────
+
+/** Satu sesi shift kerja seorang kasir/staf di satu kamera (PC kasir). */
+model ShiftSchedule {
+  id              String    @id @default(cuid())
+  staffName       String                         // nama kasir/staf
+  cameraChannelId String                         // kamera mana (PC kasir mana)
+  startTime       DateTime                       // jam mulai shift (dengan timezone)
+  endTime         DateTime                       // jam selesai shift
+  notes           String?                        // catatan opsional
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  camera          CameraChannel @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
+
+  @@index([cameraChannelId, startTime])
+  @@index([startTime, endTime])
+  @@index([staffName])
+}
+
 model DwellEvent {
   id              String        @id @default(cuid())
   zoneId          String
@@ -151,6 +178,7 @@ model AnalyticsModuleStatus {
   id               String         @id @default(cuid())
   cameraChannelId  String         @unique
   analyticsEnabled Boolean        @default(false)
+  analyticsMode    AnalyticsMode  @default(POSE)
   sampleIntervalMs Int            @default(1000)
   lastEventAt      DateTime?
   workerStatus     WorkerStatus   @default(IDLE)
