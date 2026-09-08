@@ -24,6 +24,7 @@ import {
 	todayLocal,
 	updateShift,
 } from "@/lib/shift";
+import { fetchEnrolledStaffNames } from "@/lib/staff";
 
 interface CameraOption {
 	id: string;
@@ -53,6 +54,7 @@ export default function ShiftsPage() {
 	const [cameras, setCameras] = useState<CameraOption[]>([]);
 	const [allZones, setAllZones] = useState<ZoneOption[]>([]);
 	const [staffSuggestions, setStaffSuggestions] = useState<string[]>([]);
+	const [enrolledStaff, setEnrolledStaff] = useState<string[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [showForm, setShowForm] = useState(false);
@@ -107,16 +109,18 @@ export default function ShiftsPage() {
 	useEffect(() => {
 		// eslint-disable-next-line react-hooks/set-state-in-effect
 		void load();
-		// Load kamera + semua zona aktif sekaligus
+		// Load kamera + semua zona aktif + nama staf terdaftar (face recognition) sekaligus
 		Promise.all([
 			api<Paginated<CameraOption>>("/cameras?enabled=true&pageSize=200").then(
 				(r) => r.items,
 			),
 			api<ZoneOption[]>("/analytics/zones").catch(() => [] as ZoneOption[]),
+			fetchEnrolledStaffNames().catch(() => [] as string[]),
 		])
-			.then(([cams, zones]) => {
+			.then(([cams, zones, enrolled]) => {
 				setCameras(cams);
 				setAllZones(zones);
+				setEnrolledStaff(enrolled);
 			})
 			.catch(() => {});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,7 +175,7 @@ export default function ShiftsPage() {
 				await createShift(payload);
 			}
 			setShowForm(false);
-			// eslint-disable-next-line react-hooks/set-state-in-effect
+			 
 			void load();
 		} catch {
 			setError("Gagal menyimpan shift");
@@ -184,7 +188,7 @@ export default function ShiftsPage() {
 		if (!confirm(`Hapus shift ${name}?`)) return;
 		try {
 			await deleteShift(id);
-			// eslint-disable-next-line react-hooks/set-state-in-effect
+			 
 			void load();
 		} catch {
 			setError("Gagal menghapus shift");
@@ -301,25 +305,62 @@ export default function ShiftsPage() {
 						</div>
 
 						<div className="shift-modal-body">
-							<div className="field">
-								<label htmlFor="sf-staff">Nama Staf / Kasir</label>
+						<div className="field">
+							<label htmlFor="sf-staff">Nama Staf / Kasir</label>
+							<select
+								id="sf-staff"
+								className="input select"
+								value={
+									form.staffName &&
+									(enrolledStaff.includes(form.staffName) ||
+										form.staffName === "__custom__")
+										? form.staffName
+										: "__custom__"
+								}
+								onChange={(e) =>
+									setForm((f) => ({
+										...f,
+										staffName:
+											e.target.value === "__custom__" ? "" : e.target.value,
+									}))
+								}
+								required
+							>
+								<option value="__custom__" disabled>
+									— pilih staf —
+								</option>
+								{enrolledStaff.map((n) => (
+									<option key={n} value={n}>
+										{n}
+									</option>
+								))}
+							</select>
+							{/* Input manual sebagai fallback kalau staf belum terdaftar */}
+							{(form.staffName === "" ||
+								!enrolledStaff.includes(form.staffName)) && (
+								<>
 								<input
-									id="sf-staff"
 									className="input"
+									style={{ marginTop: 6 }}
 									value={form.staffName}
 									onChange={(e) =>
-										setForm((f) => ({ ...f, staffName: e.target.value }))
+									setForm((f) => ({ ...f, staffName: e.target.value }))
 									}
-									placeholder="mis. Budi Santoso"
-									list="staff-list-modal"
-									required
+									placeholder="Ketik manual (mis. Budi Santoso)"
 								/>
-								<datalist id="staff-list-modal">
-									{staffSuggestions.map((n) => (
-										<option key={n} value={n} />
-									))}
-								</datalist>
-							</div>
+								<p
+									style={{
+									fontSize: 11,
+									color: "var(--muted)",
+									marginTop: 4,
+								}}
+								>
+									Nama belum terdaftar di face recognition — kunjungi halaman Staf
+									untuk mendaftarkan wajah.
+								</p>
+							</>
+							)}
+						</div>
 
 							<div className="field">
 								<label htmlFor="sf-camera">Kamera PC Kasir</label>

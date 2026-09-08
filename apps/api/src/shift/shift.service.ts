@@ -249,6 +249,18 @@ export class ShiftService {
 			for (const zoneId of zoneIds) {
 				const events = eventsByZone.get(zoneId) ?? [];
 				for (const ev of events) {
+					// Filter identitas: kalau event punya staffName (hasil FACE_ID)
+				// yang berbeda dengan nama staf shift → skip (orang lain).
+				// Event dengan staffName null (POSE mode / wajah tak dikenal)
+				// tetap dihitung agar backward-compatible dengan kamera
+				// non-FACE_ID dan kasus gagal recognize.
+				if (
+					ev.staffName !== null &&
+					ev.staffName.toLowerCase() !== shift.staffName.toLowerCase()
+				) {
+					continue;
+					}
+
 					// Hanya event yang overlap dengan window shift.
 					// Bug fix: Prisma mengembalikan DateTime tanpa suffix timezone,
 					// sehingga new Date(shift.startTime) bisa diinterpretasikan

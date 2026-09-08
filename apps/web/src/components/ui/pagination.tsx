@@ -98,7 +98,7 @@ export function Pagination({
 				{pageNumbers().map((n, i) =>
 					n === "…" ? (
 						<span
-							// eslint-disable-next-line react/no-array-index-key
+							 
 							key={`ellipsis-${i}`}
 							className="pager-ellipsis"
 						>

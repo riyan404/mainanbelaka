@@ -273,7 +273,7 @@ export default function NewWebcamPage() {
 							border: "1px solid var(--border)",
 						}}
 					>
-						{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+						{ }
 						<video
 							ref={videoRef}
 							autoPlay

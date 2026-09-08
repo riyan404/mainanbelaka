@@ -39,7 +39,7 @@ export default function StaffPage() {
 	}
 
 	useEffect(() => {
-		void load();
+		void Promise.resolve().then(() => load());
 	}, []);
 
 	async function handleUpload() {

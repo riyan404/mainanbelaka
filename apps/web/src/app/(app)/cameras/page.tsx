@@ -37,9 +37,8 @@ export default function CamerasPage() {
 	}, [search, page]);
 
 	// Reset ke page 1 saat search berubah
-	// eslint-disable-next-line react-hooks/set-state-in-effect
 	useEffect(() => {
-		setPage(1);
+		void Promise.resolve().then(() => setPage(1));
 	}, [search]);
 	useEffect(() => {
 		load();

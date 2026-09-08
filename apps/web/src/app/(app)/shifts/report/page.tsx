@@ -396,9 +396,10 @@ export default function ShiftReportPage() {
 		}
 	}, [staffName, cameraId, zoneId, from, to]);
 
-	// eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
 	useEffect(() => {
-		void loadReport();
+		void Promise.resolve()
+			.then(() => loadReport())
+			.catch(() => {});
 	}, []);
 
 	return (
