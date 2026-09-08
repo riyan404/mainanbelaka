@@ -124,9 +124,7 @@ docker compose down
 
 Jangan memakai `docker compose down -v` kecuali data PostgreSQL memang ingin dihapus.
 
-## Deployment Windows
-
-### Analytics worker native di macOS (performa tinggi)
+## Analytics worker native di macOS (performa tinggi)
 
 Worker analitik bisa dijalankan native (tanpa Docker) untuk memanfaatkan Apple Silicon — inference 3–4x lebih cepat (CoreML):
 
@@ -140,15 +138,49 @@ cd apps/analytics-worker
 bash run-native.sh
 ```
 
-Benchmark (M4 Pro, insightface buffalo_l, frame 720p):
+## Benchmark Performa
 
-| Mode | Inference/frame | FPS |
-| ------ | ----------------- | ----- |
-| Docker CPU | ~296ms | 3.4 |
-| Native CPU | ~91ms | 10.9 |
-| Native CoreML | ~68ms | 14.6 |
+### Face recognition (insightface buffalo_l, frame 720p, 1 wajah)
 
-### Deployment Windows
+Diuji di Apple M4 Pro (14 core, 24GB RAM):
+
+| Mode | Inference/frame | FPS | Kecepatan |
+| ------ | ----------------- | ----- | --------- |
+| Docker CPU (Linux VM) | ~296ms | 3.4 | 1x (baseline) |
+| Native CPU | ~91ms | 10.9 | 3.3x |
+| Native + CoreML | ~68ms | 14.6 | 4.4x |
+
+Catatan: Docker di macOS berjalan di VM Linux sehingga tidak bisa akses Apple Neural Engine (ANE). Worker native bisa memakai CoreML (`ONNX_PROVIDERS=CoreMLExecutionProvider,CPUExecutionProvider`, sudah default di `run-native.sh`).
+
+### Profil beban worker
+
+| Metrik | Nilai (1 kamera FACE_ID) |
+| ------ | ------------------------ |
+| CPU worker | ~4.5 core |
+| RAM worker | ~1.7 GB |
+| RAM total stack (api+web+worker+mediamtx+pg) | ~5 GB |
+
+### Rekomendasi spek production (VM Linux lokal)
+
+| Skala | CPU | RAM | GPU | Estimasi kamera |
+| ------ | --- | --- | --- | --------------- |
+| Kecil (kantor kecil) | 8 core modern | 16 GB | NVIDIA T4 16GB (bekas, best value) | 10–15 (GPU) / 1–2 (CPU only) |
+| Menengah | 16+ core (EPYC/Xeon Silver) | 32 GB | RTX A2000 / T4 x2 | 15–30 (GPU) |
+| Besar (multi-site) | 2x EPYC (64 core total) | 64–128 GB | RTX A4000 / L4 x2 | 30–100 (GPU, multi-worker) |
+
+Dengan GPU NVIDIA, inference turun dari ~296ms ke ~15ms/frame (20x) — 1 mesin bisa melayani 10–15 kamera FACE_ID. Tanpa GPU, anggarkan ~4–5 core per kamera FACE_ID.
+
+### Rekomendasi Mac sebagai server
+
+| Mac | Kamera | Catatan |
+| --- | ------ | -------- |
+| Mac Mini M4 Pro 24GB | 3–5 | Harus worker native (CoreML), bukan Docker |
+| Mac Mini M4 Pro 48GB | 5–10 | Worker native |
+| Mac Studio M4 Ultra 64GB+ | 10–20 | Neural Engine terkuat |
+
+Neural Engine M4 Pro (via CoreML) performanya setara NVIDIA T4 — sudah cukup untuk 5+ kamera asalkan worker jalan native.
+
+## Deployment Windows
 
 1. Instal Docker Desktop dan aktifkan WSL2.
 2. Salin folder proyek ke PC Windows.
