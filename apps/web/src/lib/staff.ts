@@ -31,10 +31,9 @@ export async function fetchStaffFaces(
 }
 
 export async function deleteStaffSlot(staffName: string): Promise<void> {
-	await api(
-		`/staff/faces/by-name/${encodeURIComponent(staffName)}`,
-		{ method: "DELETE" },
-	);
+	await api(`/staff/faces/by-name/${encodeURIComponent(staffName)}`, {
+		method: "DELETE",
+	});
 }
 
 export async function fetchFaceSettings(): Promise<FaceSettings> {

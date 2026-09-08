@@ -175,7 +175,7 @@ export default function ShiftsPage() {
 				await createShift(payload);
 			}
 			setShowForm(false);
-			 
+
 			void load();
 		} catch {
 			setError("Gagal menyimpan shift");
@@ -188,7 +188,7 @@ export default function ShiftsPage() {
 		if (!confirm(`Hapus shift ${name}?`)) return;
 		try {
 			await deleteShift(id);
-			 
+
 			void load();
 		} catch {
 			setError("Gagal menghapus shift");
@@ -305,62 +305,62 @@ export default function ShiftsPage() {
 						</div>
 
 						<div className="shift-modal-body">
-						<div className="field">
-							<label htmlFor="sf-staff">Nama Staf / Kasir</label>
-							<select
-								id="sf-staff"
-								className="input select"
-								value={
-									form.staffName &&
-									(enrolledStaff.includes(form.staffName) ||
-										form.staffName === "__custom__")
-										? form.staffName
-										: "__custom__"
-								}
-								onChange={(e) =>
-									setForm((f) => ({
-										...f,
-										staffName:
-											e.target.value === "__custom__" ? "" : e.target.value,
-									}))
-								}
-								required
-							>
-								<option value="__custom__" disabled>
-									— pilih staf —
-								</option>
-								{enrolledStaff.map((n) => (
-									<option key={n} value={n}>
-										{n}
-									</option>
-								))}
-							</select>
-							{/* Input manual sebagai fallback kalau staf belum terdaftar */}
-							{(form.staffName === "" ||
-								!enrolledStaff.includes(form.staffName)) && (
-								<>
-								<input
-									className="input"
-									style={{ marginTop: 6 }}
-									value={form.staffName}
-									onChange={(e) =>
-									setForm((f) => ({ ...f, staffName: e.target.value }))
+							<div className="field">
+								<label htmlFor="sf-staff">Nama Staf / Kasir</label>
+								<select
+									id="sf-staff"
+									className="input select"
+									value={
+										form.staffName &&
+										(enrolledStaff.includes(form.staffName) ||
+											form.staffName === "__custom__")
+											? form.staffName
+											: "__custom__"
 									}
-									placeholder="Ketik manual (mis. Budi Santoso)"
-								/>
-								<p
-									style={{
-									fontSize: 11,
-									color: "var(--muted)",
-									marginTop: 4,
-								}}
+									onChange={(e) =>
+										setForm((f) => ({
+											...f,
+											staffName:
+												e.target.value === "__custom__" ? "" : e.target.value,
+										}))
+									}
+									required
 								>
-									Nama belum terdaftar di face recognition — kunjungi halaman Staf
-									untuk mendaftarkan wajah.
-								</p>
-							</>
-							)}
-						</div>
+									<option value="__custom__" disabled>
+										— pilih staf —
+									</option>
+									{enrolledStaff.map((n) => (
+										<option key={n} value={n}>
+											{n}
+										</option>
+									))}
+								</select>
+								{/* Input manual sebagai fallback kalau staf belum terdaftar */}
+								{(form.staffName === "" ||
+									!enrolledStaff.includes(form.staffName)) && (
+									<>
+										<input
+											className="input"
+											style={{ marginTop: 6 }}
+											value={form.staffName}
+											onChange={(e) =>
+												setForm((f) => ({ ...f, staffName: e.target.value }))
+											}
+											placeholder="Ketik manual (mis. Budi Santoso)"
+										/>
+										<p
+											style={{
+												fontSize: 11,
+												color: "var(--muted)",
+												marginTop: 4,
+											}}
+										>
+											Nama belum terdaftar di face recognition — kunjungi
+											halaman Staf untuk mendaftarkan wajah.
+										</p>
+									</>
+								)}
+							</div>
 
 							<div className="field">
 								<label htmlFor="sf-camera">Kamera PC Kasir</label>
