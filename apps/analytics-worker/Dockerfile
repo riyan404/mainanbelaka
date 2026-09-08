@@ -15,8 +15,8 @@ COPY apps/analytics-worker/src/ src/
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir .
 
-# Snapshot directory
-RUN mkdir -p /tmp/snapshots
+# Direktori penyimpanan
+RUN mkdir -p /tmp/snapshots /tmp/staff-faces
 
 EXPOSE 9100
 

@@ -142,6 +142,7 @@ export function LiveTrackingOverlay({ cameraId }: { cameraId: string }) {
 							typeof x2 !== "number"
 						)
 							return null;
+						const isFaceTrack = t.trackRef?.startsWith("face-");
 						const label = postureLabel(t.posture);
 						const zoneName = t.zoneId ? zoneNames.get(t.zoneId) : undefined;
 						const duration =
@@ -160,7 +161,14 @@ export function LiveTrackingOverlay({ cameraId }: { cameraId: string }) {
 									maxWidth: `${(x2 - x1) * 100}%`,
 								}}
 							>
-								{zoneName ? <span className="lp-zone">{zoneName}</span> : null}
+								{t.staffName ? (
+									<span className="lp-staff">{t.staffName}</span>
+								) : t.trackRef?.startsWith("face-") ? (
+									<span className="lp-staff lp-unknown">Tidak Dikenal</span>
+								) : null}
+								{!isFaceTrack && zoneName ? (
+									<span className="lp-zone">{zoneName}</span>
+								) : null}
 								{label ? <span className="lp-posture">{label}</span> : null}
 								{duration ? <span className="lp-dur">{duration}</span> : null}
 							</div>

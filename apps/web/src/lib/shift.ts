@@ -7,22 +7,30 @@ export interface ShiftCamera {
 	name: string;
 }
 
+export interface ShiftZone {
+	id: string;
+	name: string;
+}
+
 export interface ShiftSchedule {
 	id: string;
 	staffName: string;
 	cameraChannelId: string;
+	zoneId: string | null;
 	startTime: string;
 	endTime: string;
 	notes: string | null;
 	createdAt: string;
 	updatedAt: string;
 	camera: ShiftCamera;
+	zone: ShiftZone | null;
 }
 
 export interface ShiftReportRow {
 	id: string;
 	staffName: string;
 	camera: ShiftCamera;
+	zone: ShiftZone | null;
 	startTime: string;
 	endTime: string;
 	notes: string | null;
@@ -54,6 +62,7 @@ export interface StaffReport {
 export async function fetchShifts(params?: {
 	staffName?: string;
 	cameraChannelId?: string;
+	zoneId?: string;
 	from?: string;
 	to?: string;
 	page?: number;
@@ -62,6 +71,7 @@ export async function fetchShifts(params?: {
 	const q = new URLSearchParams();
 	if (params?.staffName) q.set("staffName", params.staffName);
 	if (params?.cameraChannelId) q.set("cameraChannelId", params.cameraChannelId);
+	if (params?.zoneId) q.set("zoneId", params.zoneId);
 	if (params?.from) q.set("from", params.from);
 	if (params?.to) q.set("to", params.to);
 	if (params?.page) q.set("page", String(params.page));
@@ -75,6 +85,7 @@ export async function fetchShifts(params?: {
 export async function createShift(data: {
 	staffName: string;
 	cameraChannelId: string;
+	zoneId?: string | null;
 	startTime: string;
 	endTime: string;
 	notes?: string;
@@ -90,6 +101,7 @@ export async function updateShift(
 	data: Partial<{
 		staffName: string;
 		cameraChannelId: string;
+		zoneId: string | null;
 		startTime: string;
 		endTime: string;
 		notes: string;
@@ -112,12 +124,14 @@ export async function fetchStaffNames(): Promise<string[]> {
 export async function fetchStaffReport(params: {
 	staffName?: string;
 	cameraChannelId?: string;
+	zoneId?: string;
 	from: string;
 	to: string;
 }): Promise<StaffReport> {
 	const q = new URLSearchParams({ from: params.from, to: params.to });
 	if (params.staffName) q.set("staffName", params.staffName);
 	if (params.cameraChannelId) q.set("cameraChannelId", params.cameraChannelId);
+	if (params.zoneId) q.set("zoneId", params.zoneId);
 	return api<StaffReport>(`/shifts/report?${q.toString()}`);
 }
 

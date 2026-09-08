@@ -9,6 +9,7 @@ import {
 	MonitorCog,
 	Settings,
 	CalendarClock,
+	UserCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,6 +22,7 @@ const items = [
 	{ href: "/groups", label: "Grup", icon: Group },
 	{ href: "/analytics", label: "Analitik", icon: Activity },
 	{ href: "/shifts", label: "Shift", icon: CalendarClock },
+	{ href: "/staff", label: "Staf", icon: UserCircle },
 	{ href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 

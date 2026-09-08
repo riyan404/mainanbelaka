@@ -5,9 +5,10 @@ import { AnalyticsReconcileService } from "./analytics-reconcile.service";
 import { AnalyticsInternalController } from "./analytics-internal.controller";
 import { AnalyticsController } from "./analytics.controller";
 import { AnalyticsService } from "./analytics.service";
+import { StaffModule } from "../staff/staff.module";
 
 @Module({
-	imports: [ScheduleModule.forRoot()],
+	imports: [ScheduleModule.forRoot(), StaffModule],
 	controllers: [AnalyticsController, AnalyticsInternalController],
 	providers: [
 		AnalyticsService,

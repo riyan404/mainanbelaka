@@ -32,6 +32,10 @@ const MODE_LABELS: Record<AnalyticsMode, { label: string; desc: string }> = {
 		label: "Face (wajah)",
 		desc: "Deteksi wajah / kehadiran di depan kamera. Untuk webcam PC kasir.",
 	},
+	FACE_ID: {
+		label: "Face ID (pengenalan)",
+		desc: "Pengenalan wajah otomatis per staf. Upload foto di halaman Staf.",
+	},
 };
 
 export default function AnalyticsPage() {

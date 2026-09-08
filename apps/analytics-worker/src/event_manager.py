@@ -16,10 +16,28 @@ class OpenEvent:
     zone_id: str
     track_ref: str
     entered_at: float  # epoch
+    staff_name: str | None = None  # nama staf teridentifikasi (face recognition)
     postures: list[Posture] = field(default_factory=list)
+    staff_names: list[str | None] = field(default_factory=list)  # history per-frame
 
     def add_posture(self, posture: Posture) -> None:
         self.postures.append(posture)
+
+    def add_staff_name(self, name: str | None) -> None:
+        self.staff_names.append(name)
+        # Update staff_name ke majority (non-None names dominate)
+        if name is not None:
+            self.staff_name = name
+
+    def majority_staff_name(self) -> str | None:
+        """Return nama staf yang paling sering muncul (ignore None)."""
+        named = [n for n in self.staff_names if n is not None]
+        if not named:
+            return None
+        counts: dict[str, int] = {}
+        for n in named:
+            counts[n] = counts.get(n, 0) + 1
+        return max(counts, key=lambda k: counts[k])
 
     def majority_posture(self) -> Posture | None:
         if not self.postures:
@@ -37,6 +55,7 @@ class ClosedEvent:
     zone_id: str
     track_ref: str
     posture: Posture | None
+    staff_name: str | None  # nama staf teridentifikasi (None = UNKNOWN)
     entered_at: float  # epoch
     exited_at: float  # epoch
     duration_seconds: int
@@ -48,6 +67,7 @@ class ClosedEvent:
             "zoneId": self.zone_id,
             "trackRef": self.track_ref,
             "posture": self.posture.value if self.posture else None,
+            "staffName": self.staff_name,
             "enteredAt": datetime.fromtimestamp(self.entered_at, tz=UTC).isoformat(),
             "exitedAt": datetime.fromtimestamp(self.exited_at, tz=UTC).isoformat(),
             "durationSeconds": self.duration_seconds,
@@ -63,6 +83,7 @@ class PersonBox:
     x2: float
     y2: float
     posture: Posture | None = None
+    staff_name: str | None = None  # nama staf teridentifikasi
     updated_at: float = 0.0  # epoch saat box terakhir terlihat
 
 
@@ -84,6 +105,7 @@ class EventManager:
         zone_ids: list[str],
         postures: dict[str, Posture] | None = None,
         person_box: "PersonBox | None" = None,
+        staff_name: str | None = None,
     ) -> list[ClosedEvent]:
         """Proses satu sample: track terlihat di zona-zona tertentu.
 
@@ -109,6 +131,7 @@ class EventManager:
                 x2=person_box.x2,
                 y2=person_box.y2,
                 posture=posture if posture is not None else person_box.posture,
+                staff_name=staff_name if staff_name is not None else person_box.staff_name,
                 updated_at=now,
             )
 
@@ -135,16 +158,19 @@ class EventManager:
                     zone_id=zone_id,
                     track_ref=track_ref,
                     entered_at=now,
+                    staff_name=staff_name,
                 )
                 logger.debug(
                     "Track %s masuk zona %s", track_ref, zone_id
                 )
 
-            # Tambah posture sample
-            if postures and zone_id in postures:
-                event = self._open.get(key)
-                if event:
+            # Tambah posture sample + staff_name sample
+            event = self._open.get(key)
+            if event:
+                if postures and zone_id in postures:
                     event.add_posture(postures[zone_id])
+                if staff_name is not None:
+                    event.add_staff_name(staff_name)
 
         return closed
 
@@ -195,6 +221,7 @@ class EventManager:
             zone_id=event.zone_id,
             track_ref=event.track_ref,
             posture=event.majority_posture(),
+            staff_name=event.majority_staff_name(),
             entered_at=event.entered_at,
             exited_at=exited_at,
             duration_seconds=max(duration, 0),
@@ -240,5 +267,6 @@ class EventManager:
                 "posture": box.posture.value if box.posture is not None else None,
                 "zoneId": zone_id,
                 "durationSeconds": duration,
+                "staffName": box.staff_name,
             })
         return result

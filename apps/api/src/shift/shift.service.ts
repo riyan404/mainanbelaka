@@ -39,11 +39,15 @@ export class ShiftService {
 			data: {
 				staffName: dto.staffName.trim(),
 				cameraChannelId: dto.cameraChannelId,
+				zoneId: dto.zoneId ?? null,
 				startTime: start,
 				endTime: end,
 				notes: dto.notes?.trim() ?? null,
 			},
-			include: { camera: { select: { id: true, name: true } } },
+			include: {
+				camera: { select: { id: true, name: true } },
+				zone: { select: { id: true, name: true } },
+			},
 		});
 	}
 
@@ -52,6 +56,7 @@ export class ShiftService {
 		if (query.staffName)
 			where.staffName = { contains: query.staffName, mode: "insensitive" };
 		if (query.cameraChannelId) where.cameraChannelId = query.cameraChannelId;
+		if (query.zoneId) where.zoneId = query.zoneId;
 		if (query.from || query.to) {
 			where.startTime = {
 				...(query.from ? { gte: new Date(query.from) } : {}),
@@ -86,7 +91,10 @@ export class ShiftService {
 	async getShift(id: string) {
 		const shift = await this.prisma.shiftSchedule.findUnique({
 			where: { id },
-			include: { camera: { select: { id: true, name: true } } },
+			include: {
+				camera: { select: { id: true, name: true } },
+				zone: { select: { id: true, name: true } },
+			},
 		});
 		if (!shift) throw new NotFoundException("Shift tidak ditemukan");
 		return shift;
@@ -99,6 +107,8 @@ export class ShiftService {
 		if (dto.staffName !== undefined) data.staffName = dto.staffName.trim();
 		if (dto.cameraChannelId !== undefined)
 			data.cameraChannelId = dto.cameraChannelId;
+		// zoneId: null = reset ke "semua zona", string = zona spesifik, undefined = tidak diubah
+		if (dto.zoneId !== undefined) data.zoneId = dto.zoneId ?? null;
 		if (dto.startTime !== undefined) data.startTime = new Date(dto.startTime);
 		if (dto.endTime !== undefined) data.endTime = new Date(dto.endTime);
 		if (dto.notes !== undefined) data.notes = dto.notes.trim() || null;
@@ -118,7 +128,10 @@ export class ShiftService {
 		return this.prisma.shiftSchedule.update({
 			where: { id },
 			data,
-			include: { camera: { select: { id: true, name: true } } },
+			include: {
+				camera: { select: { id: true, name: true } },
+				zone: { select: { id: true, name: true } },
+			},
 		});
 	}
 
@@ -142,10 +155,15 @@ export class ShiftService {
 	 *   - Jumlahkan durationSeconds sebagai "waktu hadir efektif"
 	 */
 	async getStaffReport(query: StaffReportQueryDto) {
+		// Gunakan UTC eksplisit (suffix Z) agar tidak salah interpretasi
+		// sebagai local time di mesin yang bisa berbeda timezone (WIB vs UTC).
 		const fromDate = new Date(`${query.from}T00:00:00.000Z`);
 		const toDate = new Date(`${query.to}T23:59:59.999Z`);
 
 		// Fetch semua shift dalam range
+		// Bug fix: filter pakai UTC-aware boundary — shift yang startTime-nya
+		// jatuh di tanggal query (UTC) tetap ikut, tidak dikecualikan karena
+		// offset timezone lokal.
 		const shiftWhere: Record<string, unknown> = {
 			startTime: { gte: fromDate },
 			endTime: { lte: toDate },
@@ -163,7 +181,10 @@ export class ShiftService {
 		const shifts = await this.prisma.shiftSchedule.findMany({
 			where: shiftWhere,
 			orderBy: [{ staffName: "asc" }, { startTime: "asc" }],
-			include: { camera: { select: { id: true, name: true } } },
+			include: {
+				camera: { select: { id: true, name: true } },
+				zone: { select: { id: true, name: true } },
+			},
 		});
 
 		if (shifts.length === 0) return { rows: [], summary: [] };
@@ -197,6 +218,7 @@ export class ShiftService {
 							exitedAt: true,
 							durationSeconds: true,
 							posture: true,
+							staffName: true,
 						},
 					})
 				: [];
@@ -211,7 +233,13 @@ export class ShiftService {
 
 		// Hitung per shift
 		const rows = shifts.map((shift) => {
-			const zoneIds = zoneIdsByCamera.get(shift.cameraChannelId) ?? [];
+			// Kalau shift punya zoneId spesifik → pakai itu saja
+			// Kalau tidak → ambil semua zona di kamera (backward-compatible)
+			const allZoneIdsForCamera =
+				zoneIdsByCamera.get(shift.cameraChannelId) ?? [];
+			const zoneIds = shift.zoneId
+				? allZoneIdsForCamera.filter((id) => id === shift.zoneId)
+				: allZoneIdsForCamera;
 
 			let totalDwellSeconds = 0;
 			let sittingSeconds = 0;
@@ -221,10 +249,17 @@ export class ShiftService {
 			for (const zoneId of zoneIds) {
 				const events = eventsByZone.get(zoneId) ?? [];
 				for (const ev of events) {
-					// Hanya event yang overlap dengan window shift
+					// Hanya event yang overlap dengan window shift.
+					// Bug fix: Prisma mengembalikan DateTime tanpa suffix timezone,
+					// sehingga new Date(shift.startTime) bisa diinterpretasikan
+					// sebagai local time dan meleset hingga beberapa jam.
+					// Gunakan .getTime() agar perbandingan selalu dalam milidetik UTC.
+					const shiftStartMs = new Date(shift.startTime).getTime();
+					const shiftEndMs = new Date(shift.endTime).getTime();
 					const inShift =
-						ev.enteredAt >= shift.startTime &&
-						(ev.exitedAt == null || ev.exitedAt <= shift.endTime);
+						new Date(ev.enteredAt).getTime() >= shiftStartMs &&
+						(ev.exitedAt == null ||
+							new Date(ev.exitedAt).getTime() <= shiftEndMs);
 					if (!inShift) continue;
 
 					const dur = ev.durationSeconds ?? 0;

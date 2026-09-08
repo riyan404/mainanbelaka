@@ -19,6 +19,11 @@ export class CreateShiftDto {
 	@MinLength(1)
 	cameraChannelId!: string;
 
+	/** Zona spesifik (opsional — null/kosong = semua zona di kamera) */
+	@IsOptional()
+	@IsString()
+	zoneId?: string;
+
 	/** ISO 8601 dengan timezone, mis. "2026-09-05T08:00:00+07:00" */
 	@IsDateString()
 	startTime!: string;
@@ -41,6 +46,11 @@ export class UpdateShiftDto {
 	@IsString()
 	@MinLength(1)
 	cameraChannelId?: string;
+
+	/** Zona spesifik — kirim null eksplisit untuk reset ke "semua zona" */
+	@IsOptional()
+	@IsString()
+	zoneId?: string | null;
 
 	@IsOptional()
 	@IsDateString()
@@ -65,6 +75,11 @@ export class ShiftQueryDto {
 	@IsOptional()
 	@IsString()
 	cameraChannelId?: string;
+
+	/** Filter berdasarkan zona spesifik */
+	@IsOptional()
+	@IsString()
+	zoneId?: string;
 
 	/** Tanggal mulai range (ISO date) */
 	@IsOptional()
@@ -100,6 +115,11 @@ export class StaffReportQueryDto {
 	@IsOptional()
 	@IsString()
 	cameraChannelId?: string;
+
+	/** Zona spesifik (opsional — kosong = semua zona di kamera) */
+	@IsOptional()
+	@IsString()
+	zoneId?: string;
 
 	/** Tanggal mulai laporan — ISO date "YYYY-MM-DD" */
 	@IsString()

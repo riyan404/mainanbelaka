@@ -31,6 +31,12 @@ interface CameraOption {
 	device: { name: string };
 }
 
+interface ZoneOption {
+	id: string;
+	name: string;
+	cameraChannelId: string;
+}
+
 function toLocalDatetimeInput(iso: string): string {
 	const d = new Date(iso);
 	const pad = (n: number) => String(n).padStart(2, "0");
@@ -45,6 +51,7 @@ export default function ShiftsPage() {
 	const [shifts, setShifts] = useState<Paginated<ShiftSchedule> | null>(null);
 	const [page, setPage] = useState(1);
 	const [cameras, setCameras] = useState<CameraOption[]>([]);
+	const [allZones, setAllZones] = useState<ZoneOption[]>([]);
 	const [staffSuggestions, setStaffSuggestions] = useState<string[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
@@ -60,10 +67,16 @@ export default function ShiftsPage() {
 	const [form, setForm] = useState({
 		staffName: "",
 		cameraChannelId: "",
+		zoneId: "" as string, // "" = semua zona
 		startTime: `${todayLocal()}T08:00`,
 		endTime: `${todayLocal()}T16:00`,
 		notes: "",
 	});
+
+	// Zona yang tersedia untuk kamera yang sedang dipilih di form
+	const zonesForSelectedCamera = allZones.filter(
+		(z) => z.cameraChannelId === form.cameraChannelId,
+	);
 
 	async function load() {
 		setLoading(true);
@@ -94,17 +107,28 @@ export default function ShiftsPage() {
 	useEffect(() => {
 		// eslint-disable-next-line react-hooks/set-state-in-effect
 		void load();
-		api<import("@/lib/api").Paginated<CameraOption>>("/cameras?enabled=true&pageSize=200").then((r) => r.items)
-			.then(setCameras)
+		// Load kamera + semua zona aktif sekaligus
+		Promise.all([
+			api<Paginated<CameraOption>>("/cameras?enabled=true&pageSize=200").then(
+				(r) => r.items,
+			),
+			api<ZoneOption[]>("/analytics/zones").catch(() => [] as ZoneOption[]),
+		])
+			.then(([cams, zones]) => {
+				setCameras(cams);
+				setAllZones(zones);
+			})
 			.catch(() => {});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	function openNew() {
+		const defaultCameraId = cameras[0]?.id ?? "";
 		setEditId(null);
 		setForm({
 			staffName: "",
-			cameraChannelId: cameras[0]?.id ?? "",
+			cameraChannelId: defaultCameraId,
+			zoneId: "",
 			startTime: `${todayLocal()}T08:00`,
 			endTime: `${todayLocal()}T16:00`,
 			notes: "",
@@ -117,6 +141,7 @@ export default function ShiftsPage() {
 		setForm({
 			staffName: shift.staffName,
 			cameraChannelId: shift.cameraChannelId,
+			zoneId: shift.zoneId ?? "",
 			startTime: toLocalDatetimeInput(shift.startTime),
 			endTime: toLocalDatetimeInput(shift.endTime),
 			notes: shift.notes ?? "",
@@ -135,6 +160,7 @@ export default function ShiftsPage() {
 			const payload = {
 				staffName: form.staffName.trim(),
 				cameraChannelId: form.cameraChannelId,
+				zoneId: form.zoneId || null, // "" → null (semua zona)
 				startTime: localInputToIso(form.startTime),
 				endTime: localInputToIso(form.endTime),
 				notes: form.notes.trim() || undefined,
@@ -302,7 +328,12 @@ export default function ShiftsPage() {
 									className="input select"
 									value={form.cameraChannelId}
 									onChange={(e) =>
-										setForm((f) => ({ ...f, cameraChannelId: e.target.value }))
+										// Reset zona saat kamera ganti
+										setForm((f) => ({
+											...f,
+											cameraChannelId: e.target.value,
+											zoneId: "",
+										}))
 									}
 									required
 								>
@@ -314,6 +345,40 @@ export default function ShiftsPage() {
 									))}
 								</select>
 							</div>
+
+							{/* Zona — hanya muncul kalau kamera sudah dipilih & punya zona */}
+							{form.cameraChannelId && zonesForSelectedCamera.length > 0 && (
+								<div className="field">
+									<label htmlFor="sf-zone">
+										Zona Meja
+										<span
+											style={{
+												marginLeft: 6,
+												fontSize: 11,
+												color: "var(--muted)",
+												fontWeight: 400,
+											}}
+										>
+											opsional — kosong = semua zona di kamera
+										</span>
+									</label>
+									<select
+										id="sf-zone"
+										className="input select"
+										value={form.zoneId}
+										onChange={(e) =>
+											setForm((f) => ({ ...f, zoneId: e.target.value }))
+										}
+									>
+										<option value="">— Semua zona (tidak spesifik) —</option>
+										{zonesForSelectedCamera.map((z) => (
+											<option key={z.id} value={z.id}>
+												{z.name}
+											</option>
+										))}
+									</select>
+								</div>
+							)}
 
 							<div className="form-grid">
 								<div className="field">
@@ -391,6 +456,7 @@ export default function ShiftsPage() {
 							<tr>
 								<th>Staf</th>
 								<th>Kamera</th>
+								<th>Zona</th>
 								<th>Mulai</th>
 								<th>Selesai</th>
 								<th>Catatan</th>
@@ -404,6 +470,12 @@ export default function ShiftsPage() {
 										{s.staffName}
 									</td>
 									<td data-label="Kamera">{s.camera.name}</td>
+									<td
+										data-label="Zona"
+										style={{ color: s.zone ? "inherit" : "var(--muted)" }}
+									>
+										{s.zone?.name ?? "Semua zona"}
+									</td>
 									<td data-label="Mulai">{formatShiftTime(s.startTime)}</td>
 									<td data-label="Selesai">{formatShiftTime(s.endTime)}</td>
 									<td data-label="Catatan" style={{ color: "var(--muted)" }}>

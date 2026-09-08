@@ -11,6 +11,7 @@ import numpy as np
 from src.api_client import ApiClient
 from src.config import config
 from src.event_manager import ClosedEvent, EventManager, PersonBox
+from src.face_recognizer import FaceRecognizer
 from src.frame_sampler import FrameSampler
 from src.mediamtx_source import MediaMtxSource
 from src.posture_classifier import Posture, classify_posture
@@ -35,6 +36,7 @@ class CameraPipeline:
         api_client: ApiClient,
         analytics_mode: str = "POSE",
         rtsp_stream_path: str | None = None,
+        face_recognizer: FaceRecognizer | None = None,
     ) -> None:
         self.camera_id = camera_id
         self.camera_name = camera_name
@@ -42,8 +44,9 @@ class CameraPipeline:
         self.sample_interval_ms = sample_interval_ms
         self.model = model
         self.api_client = api_client
-        # "POSE" = person body + postur | "FACE" = deteksi wajah/kehadiran saja
+        # "POSE" = person body + postur | "FACE" = deteksi wajah/kehadiran saja | "FACE_ID" = face recognition
         self.analytics_mode = analytics_mode.upper()
+        self.face_recognizer = face_recognizer
 
         self.source = MediaMtxSource(
             host=config.mediamtx_rtsp_host,
@@ -144,7 +147,9 @@ class CameraPipeline:
             if self.source.save_snapshot(frame, snapshot_path):
                 self.api_client.upload_snapshot(self.camera_id, snapshot_path)
 
-        if self.analytics_mode == "FACE":
+        if self.analytics_mode == "FACE_ID":
+            self._process_frame_face_id(frame)
+        elif self.analytics_mode == "FACE":
             self._process_frame_face(frame)
         else:
             self._process_frame_pose(frame)
@@ -335,6 +340,61 @@ class CameraPipeline:
 
         self._expire_and_buffer()
 
+    # ── FACE_ID pipeline (face recognition + identifikasi karyawan) ────────────
+
+    def _process_frame_face_id(self, frame: np.ndarray) -> None:
+        """Proses satu frame mode FACE_ID: detect wajah → match ke enrollment → event + staffName.
+
+        Menggunakan insightface (via FaceRecognizer) bukan YOLO.
+        Setiap wajah yang dikenali menghasilkan event dengan staffName.
+        Wajah yang tidak dikenal menghasilkan event dengan staffName=None.
+        """
+        if self.face_recognizer is None:
+            return
+
+        matches = self.face_recognizer.recognize_faces(frame)
+        if not matches:
+            self._expire_and_buffer()
+            return
+
+        # Bangun track ref stabil: per staffName (bukan per-frame index)
+        # sehingga orang yang sama antar frame tetap 1 track → durasi akumulatif.
+        # Untuk unknown, bedakan per urutan kemunculan dalam 1 frame.
+        unknown_counter = 0
+        for match in matches:
+            if match.staff_name:
+                track_ref = f"face-{match.staff_name}"
+            else:
+                track_ref = f"face-unknown-{unknown_counter}"
+                unknown_counter += 1
+
+            centroid = (
+                (match.bbox[0] + match.bbox[2]) / 2,
+                (match.bbox[1] + match.bbox[3]) / 2,
+            )
+
+            from src.zone_matcher import match_zones as _match_zones
+            matched_zones = _match_zones(centroid, self.zones, bbox=match.bbox)
+            zone_ids = [z.id for z in matched_zones]
+
+            closed = self.event_manager.track_seen(
+                track_ref,
+                zone_ids,
+                postures=None,
+                person_box=PersonBox(
+                    x1=match.bbox[0],
+                    y1=match.bbox[1],
+                    x2=match.bbox[2],
+                    y2=match.bbox[3],
+                    posture=None,
+                    staff_name=match.staff_name,
+                ),
+                staff_name=match.staff_name,
+            )
+            self._buffer_events(closed)
+
+        self._expire_and_buffer()
+
     def _expire_and_buffer(self) -> None:
         """Expire lost tracks dan buffer closed events."""
         expired = self.event_manager.expire_tracks()
@@ -367,10 +427,28 @@ class CameraPipeline:
                 )
 
     def _flush_events(self) -> None:
-        """Kirim buffered events ke API."""
+        """Kirim buffered events ke API, buang event di bawah min_dwell_seconds."""
         with self._buffer_lock:
             if not self._event_buffer:
                 return
+
+            # Filter: buang event orang lewat (durasi terlalu pendek)
+            min_sec = config.min_dwell_seconds
+            before = len(self._event_buffer)
+            self._event_buffer = [
+                e for e in self._event_buffer
+                if e.duration_seconds >= min_sec
+            ]
+            dropped = before - len(self._event_buffer)
+            if dropped:
+                logger.debug(
+                    "Dibuang %d event < %ds (orang lewat) untuk kamera %s",
+                    dropped, min_sec, self.camera_name,
+                )
+
+            if not self._event_buffer:
+                return
+
             batch = self._event_buffer[: config.event_batch_size]
             remaining = self._event_buffer[config.event_batch_size :]
             # Cap buffer

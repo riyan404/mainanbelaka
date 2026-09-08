@@ -106,7 +106,10 @@ export class AnalyticsService {
 
 	// ─── Module enable/disable ────────────────────────────────────
 
-	async enableAnalytics(cameraId: string, mode: "POSE" | "FACE" = "POSE") {
+	async enableAnalytics(
+		cameraId: string,
+		mode: "POSE" | "FACE" | "FACE_ID" = "POSE",
+	) {
 		const camera = await this.prisma.cameraChannel.findUnique({
 			where: { id: cameraId },
 			include: { device: true },
@@ -301,6 +304,7 @@ export class AnalyticsService {
 						trackRef: event.trackRef,
 						posture:
 							(event.posture as "SITTING" | "STANDING" | "UNKNOWN") ?? null,
+						staffName: event.staffName ?? null,
 						enteredAt: new Date(event.enteredAt),
 						exitedAt: event.exitedAt ? new Date(event.exitedAt) : null,
 						durationSeconds: event.durationSeconds ?? null,
@@ -427,6 +431,7 @@ export class AnalyticsService {
 				posture: t.posture ?? null,
 				zoneId: t.zoneId ?? null,
 				durationSeconds: t.durationSeconds ?? 0,
+				staffName: t.staffName ?? null,
 			})),
 			updatedAt: new Date(),
 		});

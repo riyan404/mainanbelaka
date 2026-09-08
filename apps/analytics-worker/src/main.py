@@ -64,12 +64,27 @@ def main() -> None:
 
     if pose_model is not None:
         from src.api_client import ApiClient
+        from src.face_recognizer import FaceRecognizer
         from src.orchestrator import Orchestrator
 
         api_client = ApiClient()
+
+        # Load insightface face recognizer (opsional — untuk mode FACE_ID)
+        face_recognizer = None
+        try:
+            fr = FaceRecognizer(api_client=api_client)
+            if fr.load_model():
+                face_recognizer = fr
+                logger.info("Face recognizer ready (insightface buffalo_l, CPU)")
+        except Exception:
+            logger.warning(
+                "Insightface tidak tersedia — kamera mode FACE_ID akan skip."
+            )
+
         orchestrator = Orchestrator(
             pose_model=pose_model,
             face_model=face_model,
+            face_recognizer=face_recognizer,
             api_client=api_client,
             health_state=state,
         )

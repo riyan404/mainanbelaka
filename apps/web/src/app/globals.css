@@ -731,6 +731,14 @@ tr:last-child td {
 .live-person-label:empty {
 	display: none;
 }
+.lp-staff {
+	font-weight: 800;
+	color: #000;
+}
+.lp-unknown {
+	color: #dc2626;
+	font-weight: 600;
+}
 .lp-zone {
 	opacity: 0.75;
 	font-weight: 600;

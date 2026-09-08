@@ -17,11 +17,18 @@ import {
 	formatShiftTime,
 	todayLocal,
 } from "@/lib/shift";
+import type { Paginated } from "@/lib/api";
 
 interface CameraOption {
 	id: string;
 	name: string;
 	device: { name: string };
+}
+
+interface ZoneOption {
+	id: string;
+	name: string;
+	cameraChannelId: string;
 }
 
 // ─── Attendance bar ──────────────────────────────────────────────────────────
@@ -201,6 +208,7 @@ function ReportTable({ rows }: { rows: ShiftReportRow[] }) {
 								onSort={toggleSort}
 							/>
 							<th>Kamera</th>
+							<th>Zona</th>
 							<ThSort
 								col="startTime"
 								label="Mulai"
@@ -259,6 +267,12 @@ function ReportTable({ rows }: { rows: ShiftReportRow[] }) {
 									{r.staffName}
 								</td>
 								<td data-label="Kamera">{r.camera.name}</td>
+								<td
+									data-label="Zona"
+									style={{ color: r.zone ? "inherit" : "var(--muted)" }}
+								>
+									{r.zone?.name ?? "Semua zona"}
+								</td>
 								<td data-label="Mulai">{formatShiftTime(r.startTime)}</td>
 								<td data-label="Selesai">{formatShiftTime(r.endTime)}</td>
 								<td data-label="Durasi">
@@ -330,6 +344,7 @@ function downloadCsv(report: StaffReport) {
 
 export default function ShiftReportPage() {
 	const [cameras, setCameras] = useState<CameraOption[]>([]);
+	const [allZones, setAllZones] = useState<ZoneOption[]>([]);
 	const [staffSuggestions, setStaffSuggestions] = useState<string[]>([]);
 	const [report, setReport] = useState<StaffReport | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -337,16 +352,26 @@ export default function ShiftReportPage() {
 
 	const [staffName, setStaffName] = useState("");
 	const [cameraId, setCameraId] = useState("");
+	const [zoneId, setZoneId] = useState("");
 	const [from, setFrom] = useState(todayLocal());
 	const [to, setTo] = useState(todayLocal());
 
+	// Zona yang tersedia untuk kamera filter yang dipilih
+	const zonesForFilterCamera = allZones.filter(
+		(z) => !cameraId || z.cameraChannelId === cameraId,
+	);
+
 	useEffect(() => {
 		Promise.all([
-			api<import("@/lib/api").Paginated<CameraOption>>("/cameras?enabled=true&pageSize=200").then((r) => r.items),
+			api<Paginated<CameraOption>>("/cameras?enabled=true&pageSize=200").then(
+				(r) => r.items,
+			),
+			api<ZoneOption[]>("/analytics/zones").catch(() => [] as ZoneOption[]),
 			fetchStaffNames(),
 		])
-			.then(([cams, names]) => {
+			.then(([cams, zones, names]) => {
 				setCameras(cams);
+				setAllZones(zones);
 				setStaffSuggestions(names);
 			})
 			.catch(() => {});
@@ -359,6 +384,7 @@ export default function ShiftReportPage() {
 			const data = await fetchStaffReport({
 				staffName: staffName || undefined,
 				cameraChannelId: cameraId || undefined,
+				zoneId: zoneId || undefined,
 				from,
 				to,
 			});
@@ -368,7 +394,7 @@ export default function ShiftReportPage() {
 		} finally {
 			setLoading(false);
 		}
-	}, [staffName, cameraId, from, to]);
+	}, [staffName, cameraId, zoneId, from, to]);
 
 	// eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
 	useEffect(() => {
@@ -425,7 +451,10 @@ export default function ShiftReportPage() {
 				<select
 					className="input select"
 					value={cameraId}
-					onChange={(e) => setCameraId(e.target.value)}
+					onChange={(e) => {
+						setCameraId(e.target.value);
+						setZoneId(""); // reset zona saat kamera ganti
+					}}
 				>
 					<option value="">Semua kamera</option>
 					{cameras.map((c) => (
@@ -434,6 +463,21 @@ export default function ShiftReportPage() {
 						</option>
 					))}
 				</select>
+				{/* Dropdown zona — muncul kalau ada zona tersedia */}
+				{zonesForFilterCamera.length > 0 && (
+					<select
+						className="input select"
+						value={zoneId}
+						onChange={(e) => setZoneId(e.target.value)}
+					>
+						<option value="">Semua zona</option>
+						{zonesForFilterCamera.map((z) => (
+							<option key={z.id} value={z.id}>
+								{z.name}
+							</option>
+						))}
+					</select>
+				)}
 				<label
 					style={{
 						display: "flex",

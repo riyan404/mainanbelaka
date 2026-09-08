@@ -29,6 +29,10 @@ class WorkerConfig(BaseSettings):
 
     # Tracking
     track_timeout_seconds: float = 5.0
+    # Durasi minimum dwell agar event dikirim ke API.
+    # Event di bawah threshold ini dianggap orang sekadar lewat dan dibuang.
+    # Default 30 detik — naikkan jika masih banyak false positive lewatan.
+    min_dwell_seconds: int = 30
 
     # Event buffer
     event_flush_interval_seconds: float = 5.0

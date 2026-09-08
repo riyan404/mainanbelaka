@@ -39,8 +39,9 @@ enum WorkerStatus {
 }
 
 enum AnalyticsMode {
-  POSE   // deteksi tubuh penuh + postur duduk/berdiri (default, CCTV ruangan)
-  FACE   // deteksi wajah/kehadiran di depan kamera (PC kasir)
+  POSE      // deteksi tubuh penuh + postur duduk/berdiri (default, CCTV ruangan)
+  FACE      // deteksi wajah/kehadiran di depan kamera (PC kasir)
+  FACE_ID   // deteksi wajah + identifikasi karyawan (face recognition)
 }
 
 model Admin {
@@ -126,16 +127,17 @@ model CameraGroup {
 }
 
 model AnalyticsZone {
-  id              String         @id @default(cuid())
+  id              String          @id @default(cuid())
   cameraChannelId String
   name            String
   polygon         Json
-  trackPosture    Boolean        @default(false)
-  enabled         Boolean        @default(true)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  camera          CameraChannel  @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
+  trackPosture    Boolean         @default(false)
+  enabled         Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  camera          CameraChannel   @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
   events          DwellEvent[]
+  shiftSchedules  ShiftSchedule[]
 
   @@index([cameraChannelId, enabled])
 }
@@ -144,15 +146,17 @@ model AnalyticsZone {
 
 /** Satu sesi shift kerja seorang kasir/staf di satu kamera (PC kasir). */
 model ShiftSchedule {
-  id              String    @id @default(cuid())
-  staffName       String                         // nama kasir/staf
-  cameraChannelId String                         // kamera mana (PC kasir mana)
-  startTime       DateTime                       // jam mulai shift (dengan timezone)
-  endTime         DateTime                       // jam selesai shift
-  notes           String?                        // catatan opsional
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  camera          CameraChannel @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
+  id              String         @id @default(cuid())
+  staffName       String                              // nama kasir/staf
+  cameraChannelId String                              // kamera mana (PC kasir mana)
+  zoneId          String?                             // zona spesifik (opsional — null = semua zona di kamera)
+  startTime       DateTime                            // jam mulai shift (dengan timezone)
+  endTime         DateTime                            // jam selesai shift
+  notes           String?                             // catatan opsional
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  camera          CameraChannel  @relation(fields: [cameraChannelId], references: [id], onDelete: Cascade)
+  zone            AnalyticsZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
 
   @@index([cameraChannelId, startTime])
   @@index([startTime, endTime])
@@ -164,6 +168,7 @@ model DwellEvent {
   zoneId          String
   trackRef        String
   posture         Posture?
+  staffName       String?                             // nama staf teridentifikasi (dari face recognition, null = UNKNOWN)
   enteredAt       DateTime
   exitedAt        DateTime?
   durationSeconds Int?
@@ -172,6 +177,30 @@ model DwellEvent {
 
   @@index([zoneId, enteredAt])
   @@index([enteredAt])
+  @@index([staffName, enteredAt])
+}
+
+// ─── Staff Face (Enrollment Wajah Karyawan) ────────────────────────────────
+
+/** Foto wajah karyawan untuk face recognition. Satu staf bisa punya beberapa foto. */
+model StaffFace {
+  id          String   @id @default(cuid())
+  staffName   String                          // nama karyawan (harus konsisten dengan ShiftSchedule.staffName)
+  photoPath   String                          // path file foto di server lokal
+  embedding   Json                            // vektor embedding wajah (array 512 float)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([staffName])
+}
+
+// ─── System Settings ────────────────────────────────────────────────────────
+
+/** Konfigurasi global yang bisa diubah dari UI. */
+model SystemSetting {
+  key       String   @id                     // mis. "faceRecognitionThreshold"
+  value     String                            // JSON-encoded value
+  updatedAt DateTime @updatedAt
 }
 
 model AnalyticsModuleStatus {

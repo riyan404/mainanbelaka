@@ -31,4 +31,36 @@ export class AnalyticsCleanupService {
 			this.logger.error("Retensi DwellEvent gagal", error);
 		}
 	}
+
+	/**
+	 * Hapus DwellEvent UNKNOWN (wajah tidak dikenal) yang sudah lewat masa retensi.
+	 * Default 2 hari — configurable via SystemSetting "unknownEventRetentionDays".
+	 */
+	@Cron(CronExpression.EVERY_HOUR)
+	async cleanupUnknownEvents(): Promise<void> {
+		try {
+			// Baca setting dari DB, fallback ke 2 hari
+			const setting = await this.prisma.systemSetting.findUnique({
+				where: { key: "unknownEventRetentionDays" },
+			});
+			const retentionDays = setting ? Number.parseInt(setting.value, 10) : 2;
+
+			const cutoff = new Date();
+			cutoff.setDate(cutoff.getDate() - retentionDays);
+
+			const result = await this.prisma.dwellEvent.deleteMany({
+				where: {
+					staffName: null, // UNKNOWN — wajah tidak dikenal
+					enteredAt: { lt: cutoff },
+				},
+			});
+			if (result.count > 0) {
+				this.logger.log(
+					`Cleanup: ${result.count} event UNKNOWN dihapus (>${retentionDays} hari)`,
+				);
+			}
+		} catch (error) {
+			this.logger.error("Cleanup event UNKNOWN gagal", error);
+		}
+	}
 }

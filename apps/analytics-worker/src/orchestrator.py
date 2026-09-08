@@ -12,6 +12,7 @@ from typing import Any
 
 from src.api_client import ApiClient
 from src.config import config
+from src.face_recognizer import FaceRecognizer
 from src.health import HealthState
 from src.pipeline import CameraPipeline
 from src.zone_matcher import Zone
@@ -28,9 +29,11 @@ class Orchestrator:
         api_client: ApiClient,
         health_state: HealthState,
         face_model: Any | None = None,
+        face_recognizer: FaceRecognizer | None = None,
     ) -> None:
         self.pose_model = pose_model
         self.face_model = face_model
+        self.face_recognizer = face_recognizer
         self.api_client = api_client
         self.health_state = health_state
         self._pipelines: dict[str, CameraPipeline] = {}
@@ -74,6 +77,17 @@ class Orchestrator:
 
     def _sync(self) -> None:
         """Satu cycle sync dengan API."""
+        # Sync face recognition: extract pending embeddings + reload enrolled faces + update threshold
+        if self.face_recognizer is not None:
+            try:
+                self.face_recognizer.sync_enrollments()
+                settings = self.api_client.get_face_settings()
+                self.face_recognizer.update_threshold(
+                    settings.get("faceRecognitionThreshold", 0.5)
+                )
+            except Exception:
+                logger.debug("Face recognition sync gagal, skip")
+
         cameras_data = self.api_client.get_active_cameras()
         active_ids = {c["cameraChannelId"] for c in cameras_data}
 
@@ -112,7 +126,22 @@ class Orchestrator:
 
                 # Pilih model sesuai mode analitik
                 analytics_mode = cam.get("analyticsMode", "POSE")
-                if analytics_mode == "FACE":
+                if analytics_mode == "FACE_ID":
+                    if self.face_recognizer is None:
+                        logger.warning(
+                            "Mode FACE_ID diminta untuk kamera %s tapi FaceRecognizer"
+                            " tidak tersedia, skip.",
+                            cam["cameraName"],
+                        )
+                        self.api_client.update_worker_status(
+                            camera_id,
+                            "ERROR",
+                            "Model Face Recognition tidak tersedia di worker",
+                        )
+                        continue
+                    # FACE_ID tidak pakai YOLO, pakai insightface via FaceRecognizer
+                    selected_model = self.pose_model  # placeholder, pipeline tidak pakai model YOLO
+                elif analytics_mode == "FACE":
                     if self.face_model is None:
                         logger.warning(
                             "Mode FACE diminta untuk kamera %s tapi model FACE"
@@ -143,6 +172,7 @@ class Orchestrator:
                     analytics_mode=analytics_mode,
                     api_client=self.api_client,
                     rtsp_stream_path=rtsp_stream_path,
+                    face_recognizer=self.face_recognizer if analytics_mode == "FACE_ID" else None,
                 )
                 self._pipelines[camera_id] = pipeline
                 pipeline.start()

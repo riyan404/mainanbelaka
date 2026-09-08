@@ -142,6 +142,11 @@ export class DwellEventInputDto {
 	@IsOptional()
 	posture?: string;
 
+	/** Nama staf teridentifikasi oleh face recognition (null = UNKNOWN/tidak dikenal) */
+	@IsString()
+	@IsOptional()
+	staffName?: string;
+
 	@IsDateString()
 	enteredAt!: string;
 
@@ -203,6 +208,10 @@ export class LiveTrackDto {
 	@Min(0)
 	@IsOptional()
 	durationSeconds?: number;
+
+	@IsString()
+	@IsOptional()
+	staffName?: string | null;
 }
 
 export class LiveStateDto {
@@ -217,8 +226,8 @@ export class LiveStateDto {
 }
 
 export class EnableAnalyticsDto {
-	/** Mode analitik: POSE (tubuh/postur, default) atau FACE (wajah/kehadiran). */
-	@IsIn(["POSE", "FACE"])
+	/** Mode analitik: POSE (tubuh/postur), FACE (wajah/kehadiran), atau FACE_ID (pengenalan wajah). */
+	@IsIn(["POSE", "FACE", "FACE_ID"])
 	@IsOptional()
-	mode?: "POSE" | "FACE";
+	mode?: "POSE" | "FACE" | "FACE_ID";
 }

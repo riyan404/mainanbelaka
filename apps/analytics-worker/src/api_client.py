@@ -132,5 +132,58 @@ class ApiClient:
             logger.exception("Gagal upload snapshot")
             return False
 
+    # ─── Face Recognition endpoints ────────────────────────────────────────
+
+    def get_pending_face_embeddings(self) -> list[dict[str, Any]]:
+        """Fetch foto wajah yang belum di-extract embeddingnya."""
+        try:
+            resp = self._client.get(
+                f"{self.base_url}/internal/analytics/face-pending"
+            )
+            resp.raise_for_status()
+            return resp.json()  # type: ignore[no-any-return]
+        except _HTTP_ERRORS:
+            logger.debug("Gagal fetch pending face embeddings")
+            return []
+
+    def get_all_face_embeddings(self) -> list[dict[str, Any]]:
+        """Fetch semua face embedding yang sudah enrolled."""
+        try:
+            resp = self._client.get(
+                f"{self.base_url}/internal/analytics/face-embeddings"
+            )
+            resp.raise_for_status()
+            return resp.json()  # type: ignore[no-any-return]
+        except _HTTP_ERRORS:
+            logger.debug("Gagal fetch face embeddings")
+            return []
+
+    def update_face_embedding(self, face_id: str, embedding: list[float]) -> bool:
+        """Update embedding setelah extract dari foto."""
+        try:
+            resp = self._client.post(
+                f"{self.base_url}/internal/analytics/face-embedding",
+                json={"id": face_id, "embedding": embedding},
+            )
+            resp.raise_for_status()
+            return True
+        except _HTTP_ERRORS:
+            logger.exception("Gagal update face embedding %s", face_id)
+            return False
+
+    def get_face_settings(self) -> dict[str, Any]:
+        """Fetch face recognition settings (threshold, retention)."""
+        try:
+            resp = self._client.get(
+                f"{self.base_url}/internal/analytics/face-settings"
+            )
+            resp.raise_for_status()
+            return resp.json()  # type: ignore[no-any-return]
+        except _HTTP_ERRORS:
+            return {
+                "faceRecognitionThreshold": 0.5,
+                "unknownEventRetentionDays": 2,
+            }
+
     def close(self) -> None:
         self._client.close()

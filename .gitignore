@@ -16,6 +16,12 @@ apps/api/prisma/*.db
 .playwright-mcp/
 auto.crt
 auto.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.pt
 # Screenshot artifacts
 *.png
 *.jpg

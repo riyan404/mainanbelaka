@@ -20,7 +20,7 @@ export interface AnalyticsZone {
 	_count?: { events: number };
 }
 
-export type AnalyticsMode = "POSE" | "FACE";
+export type AnalyticsMode = "POSE" | "FACE" | "FACE_ID";
 
 export interface AnalyticsModuleStatus {
 	id: string;
@@ -84,6 +84,7 @@ export interface LiveTrack {
 	posture: "SITTING" | "STANDING" | "UNKNOWN" | null;
 	zoneId: string | null;
 	durationSeconds: number;
+	staffName: string | null;
 }
 
 export interface CameraLiveState {
