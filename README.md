@@ -14,6 +14,32 @@ MVP scaffold mencakup:
 - Sub-stream pada grid, main stream saat fullscreen.
 - UI control-room monokrom responsif.
 - Docker Compose untuk macOS development dan Windows deployment.
+- **Analitik dwell-time**: zona poligon per kamera, deteksi orang (YOLO pose), event masuk/keluar zona, laporan ringkasan.
+- **Face recognition (mode FACE_ID)**: pengenalan wajah otomatis per staf via insightface (buffalo_l), identitas staf terlihat realtime di overlay dashboard.
+- **Jadwal shift & laporan kehadiran**: shift per staf per kamera/zona, laporan kehadiran otomatis dari dwell event yang difilter identitas wajah.
+
+## Fitur Analitik & Kehadiran
+
+### Mode analitik per kamera
+
+| Mode | Deskripsi |
+| ------ | ---------- |
+| `POSE` | Deteksi orang + pose (duduk/berdiri) via YOLO11n-pose — cocok untuk kamera yang memotong badan atas. |
+| `FACE` | Deteksi wajah (YOLOv8n-face). |
+| `FACE_ID` | Pengenalan wajah — mengidentifikasi staf terdaftar via insightface buffalo_l. |
+
+### Alur face recognition
+
+1. Upload foto staf di halaman **Staf** (`/staff`) — foto disimpan di filesystem server, bukan database.
+2. Analytics worker meng-extract embedding wajah dari foto (sinkron setiap 30 detik).
+3. Kamera yang di-set mode `FACE_ID` akan mengenali wajah per frame — nama staf tampil di overlay dashboard (kuning = teridentifikasi, "Tidak Dikenal" = tidak cocok).
+4. Threshold kemiripan & retensi event tak dikenal diatur di halaman **Pengaturan** (`/settings`).
+
+### Laporan shift
+
+1. Buat jadwal shift di halaman **Shift** (`/shifts`) — pilih staf dari dropdown (staf ter-enroll face recognition), kamera, dan opsional zona spesifik.
+2. Laporan kehadiran (`/shifts/report`) menghitung dwell time per shift — hanya event dengan identitas wajah yang cocok dengan nama staf shift yang dihitung.
+3. Event tanpa identitas (mode POSE / wajah tak dikenal) tetap dihitung agar kompatibel dengan kamera non-face-recognition.
 
 ## Persyaratan
 
@@ -99,6 +125,30 @@ docker compose down
 Jangan memakai `docker compose down -v` kecuali data PostgreSQL memang ingin dihapus.
 
 ## Deployment Windows
+
+### Analytics worker native di macOS (performa tinggi)
+
+Worker analitik bisa dijalankan native (tanpa Docker) untuk memanfaatkan Apple Silicon — inference 3–4x lebih cepat (CoreML):
+
+```bash
+# Siapkan venv sekali
+cd apps/analytics-worker
+/opt/homebrew/opt/python@3.12/bin/python3.12 -m venv .venv
+.venv/bin/pip install ultralytics opencv-python-headless httpx insightface onnxruntime pydantic-settings
+
+# Stop worker di Docker dulu, lalu jalankan native
+bash run-native.sh
+```
+
+Benchmark (M4 Pro, insightface buffalo_l, frame 720p):
+
+| Mode | Inference/frame | FPS |
+| ------ | ----------------- | ----- |
+| Docker CPU | ~296ms | 3.4 |
+| Native CPU | ~91ms | 10.9 |
+| Native CoreML | ~68ms | 14.6 |
+
+### Deployment Windows
 
 1. Instal Docker Desktop dan aktifkan WSL2.
 2. Salin folder proyek ke PC Windows.

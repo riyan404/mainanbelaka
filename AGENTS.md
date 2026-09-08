@@ -53,7 +53,8 @@ cctv/
 │  ├─ api/                        NestJS backend
 │  │  ├─ prisma/
 │  │  │  ├─ schema.prisma         Model DB (Admin, Device, CameraChannel, Group, CameraGroup,
-│  │  │  │                        AnalyticsZone, DwellEvent, AnalyticsModuleStatus)
+│  │  │  │                        AnalyticsZone, DwellEvent, AnalyticsModuleStatus,
+│  │  │  │                        ShiftSchedule, StaffFace, SystemSetting)
 │  │  │  └─ migrations/           Migration SQL Prisma
 │  │  └─ src/
 │  │     ├─ main.ts               Bootstrap (setGlobalPrefix "api", CORS, cookies, ValidationPipe)
@@ -68,39 +69,46 @@ cctv/
 │  │     ├─ groups/               Grup many-to-many + default group
 │  │     ├─ dashboard/            GET /api/dashboard?groupId&page&layout — paginated cameras
 │  │     ├─ streams/              POST /api/streams/:cameraId/session — create MediaMTX path + WebRTC URL
-│  │     └─ analytics/            Zones CRUD, enable/disable, events, summary, internal worker endpoint,
+│  │     ├─ shift/                CRUD ShiftSchedule + laporan kehadiran staf (getStaffReport)
+│  │     ├─ staff/                Upload/CRUD foto staf (face enrollment), settings face recognition
+│  │     └─ analytics/            Zones CRUD, enable/disable, events, summary, live-state, internal worker endpoint,
 │  │                                cleanup retention (@nestjs/schedule), snapshot serve
 │  ├─ analytics-worker/           Python analytics worker (dwell-time module)
 │  │  ├─ Dockerfile
 │  │  ├─ pyproject.toml
 │  │  ├─ src/
 │  │  │  ├─ main.py               Entrypoint — load config, model, health, orchestrator
-│  │  │  ├─ config.py             Pydantic Settings (ANALYTICS_* env vars)
+│  │  │  ├─ config.py             Pydantic Settings (ANALYTICS_* env vars, incl. min_dwell_seconds)
 │  │  │  ├─ health.py             HTTP :9100/health server
 │  │  │  ├─ mediamtx_source.py    RTSP reader dari MediaMTX sub-stream
 │  │  │  ├─ frame_sampler.py      Sample 1 frame per interval
-│  │  │  ├─ pipeline.py           Detect → track → zone → posture → event per kamera
+│  │  │  ├─ pipeline.py           Detect → track → zone → posture/event per kamera (mode POSE/FACE/FACE_ID)
 │  │  │  ├─ zone_matcher.py       Point-in-polygon test
 │  │  │  ├─ posture_classifier.py Heuristik duduk/berdiri dari YOLO11n-pose keypoints
-│  │  │  ├─ event_manager.py      Buka/tutup DwellEvent, majority posture
-│  │  │  ├─ api_client.py         HTTP client ke NestJS internal endpoint
+│  │  │  ├─ event_manager.py      Buka/tutup DwellEvent, majority posture + staff_name (FACE_ID)
+│  │  │  ├─ face_recognizer.py    insightface buffalo_l — enrollment sync + matching per frame
+│  │  │  ├─ api_client.py         HTTP client ke NestJS internal endpoint (events, embeddings, settings)
 │  │  │  └─ orchestrator.py       Sync dengan API, kelola lifecycle pipeline per kamera
+│  │  ├─ run-native.sh            Jalankan worker native di macOS (CoreML, 3-4x lebih cepat dari Docker)
 │  │  └─ tests/                   pytest (zone_matcher, posture_classifier, event_manager)
 │  └─ web/                        Next.js frontend
 │     └─ src/
 │        ├─ app/
 │        │  ├─ (app)/             Grup route ter-autentikasi: dashboard, devices, cameras, groups,
-│        │  │                     analytics, analytics/zones, analytics/dashboard, settings
+│        │  │                     analytics, analytics/zones, analytics/dashboard, settings,
+│        │  │                     staff (face enrollment), shifts, shifts/report
 │        │  ├─ login/             Halaman login
 │        │  └─ api/[...path]/     Catch-all proxy → API_INTERNAL_URL (satu origin untuk cookie)
 │        ├─ proxy.ts              Middleware Next: cek sesi via /api/auth/session, redirect
 │        ├─ components/           camera-grid, camera-tile, device-wizard, app-sidebar,
-│        │                        zone-editor/zone-editor, zone-editor/zone-canvas, ui/*
-│        └─ lib/                  api.ts, hevc.ts, utils.ts, analytics.ts (API client + types)
+│        │                        zone-editor/zone-editor, zone-editor/zone-canvas,
+│        │                        live-tracking-overlay (overlay tracking realtime), ui/*
+│        └─ lib/                  api.ts, hevc.ts, utils.ts, analytics.ts, shift.ts, staff.ts
 ├─ infra/mediamtx/                mediamtx.yml (prod), mediamtx.dev.yml, mediamtx.orbstack.yml
 ├─ docs/
 │  ├─ PRD.md                       PRD MVP inti
 │  ├─ PRD-dwell-time-analytics.md  PRD modul add-on analytics
+│  ├─ PRD-face-recognition.md      PRD face recognition & laporan kehadiran staf
 │  └─ plans/                       Rencana implementasi historis
 ├─ rundev.sh                       One-shot dev launcher (native, tanpa Docker) di macOS
 ├─ docker-compose.yml              Production stack
@@ -123,10 +131,13 @@ cctv/
 - **CameraGroup** — join table many-to-many `CameraChannel ↔ Group`.
 
 - **AnalyticsZone** — poligon zona analitik per kamera. `polygon` = JSON array `[{x,y},...]` relatif 0–1. `trackPosture` = boolean apakah zona ini dianalisis posturnya.
-- **DwellEvent** — satu baris per keberadaan track dalam zona. `enteredAt`→`exitedAt`, `durationSeconds`, `posture` (SITTING|STANDING|UNKNOWN). `trackRef` = ID anonim worker, bukan identitas.
-- **AnalyticsModuleStatus** — status modul analitik per kamera. `analyticsEnabled`, `workerStatus` (IDLE|RUNNING|ERROR), `lastErrorMessage`, `snapshotPath`.
+- **DwellEvent** — satu baris per keberadaan track dalam zona. `enteredAt`→`exitedAt`, `durationSeconds`, `posture` (SITTING|STANDING|UNKNOWN), `staffName` (hasil face recognition, null jika tak dikenal/non-FACE_ID). `trackRef` = ID anonim worker, bukan identitas.
+- **AnalyticsModuleStatus** — status modul analitik per kamera. `analyticsEnabled`, `analyticsMode` (POSE|FACE|FACE_ID), `workerStatus` (IDLE|RUNNING|ERROR), `lastErrorMessage`, `snapshotPath`.
+- **ShiftSchedule** — jadwal shift staf: `staffName`, `cameraChannelId`, `zoneId` (opsional — null = semua zona di kamera), `startTime`/`endTime`, `notes`. Laporan kehadiran join shift → DwellEvent dengan filter identitas `staffName` (case-insensitive).
+- **StaffFace** — foto staf untuk face recognition: `staffName`, `photoPath` (filesystem, bukan DB), `embedding` (base64, di-extract worker via insightface). Foto fisik di `STAFF_FACE_DIR` (default `/tmp/staff-faces`, volume `staff_faces` shared API↔worker).
+- **SystemSetting** — key-value settings global: face recognition threshold (0.3–0.7), unknown retention days (default 2).
 
-Enum: `DeviceType (IP_CAMERA|NVR|DVR)`, `ConnectionStatus (UNTESTED|ONLINE|OFFLINE|ERROR)`, `Availability (AVAILABLE|UNAVAILABLE)`, `Posture (SITTING|STANDING|UNKNOWN)`, `WorkerStatus (IDLE|RUNNING|ERROR)`.
+Enum: `DeviceType (IP_CAMERA|NVR|DVR)`, `ConnectionStatus (UNTESTED|ONLINE|OFFLINE|ERROR)`, `Availability (AVAILABLE|UNAVAILABLE)`, `Posture (SITTING|STANDING|UNKNOWN)`, `WorkerStatus (IDLE|RUNNING|ERROR)`, `AnalyticsMode (POSE|FACE|FACE_ID)`.
 
 Menambah kolom/tabel:
 
@@ -175,6 +186,26 @@ Semua endpoint di-prefix `/api`. Endpoint selain `/api/auth/login`, `/api/auth/l
 | GET    | `/api/internal/analytics/active-cameras` | **Internal only** — list kamera analyticsEnabled + zona  |
 | POST   | `/api/internal/analytics/worker-status`  | **Internal only** — update worker status                  |
 | POST   | `/api/internal/analytics/snapshot`       | **Internal only** — upload snapshot JPEG                  |
+| POST   | `/api/internal/analytics/live-state`     | **Internal only** — worker kirim posisi track realtime (overlay dashboard) |
+| GET    | `/api/internal/analytics/face-embeddings`| **Internal only** — semua embedding staf (worker sync)    |
+| GET    | `/api/internal/analytics/face-pending`   | **Internal only** — foto staf yang belum punya embedding  |
+| PUT    | `/api/internal/analytics/face-embedding/:id` | **Internal only** — update embedding hasil extract    |
+| GET    | `/api/internal/analytics/face-settings`  | **Internal only** — threshold + retention settings        |
+| GET    | `/api/analytics/cameras/:id/live`    | Live state tracking realtime (posisi box + staffName untuk overlay) |
+| GET    | `/api/shifts?staffName=&cameraChannelId=&zoneId=&from=&to=&page=` | List shift (paginated) |
+| POST   | `/api/shifts`                     | Buat shift (staffName, cameraChannelId, zoneId opsional, startTime, endTime, notes) |
+| PUT    | `/api/shifts/:id`                 | Update shift                                                  |
+| DELETE | `/api/shifts/:id`                 | Hapus shift                                                   |
+| GET    | `/api/shifts/staff-names`         | Nama staf unik yang pernah ada shift (autocomplete)           |
+| GET    | `/api/shifts/report?from=&to=&staffName=&cameraChannelId=` | Laporan kehadiran per shift (dwell time, difilter identitas staffName dari face recognition) |
+| GET    | `/api/staff/faces?staffName=`     | List foto staf ter-enroll                                      |
+| GET    | `/api/staff/faces/names`          | Nama staf unik yang ter-enroll (dropdown form shift)           |
+| POST   | `/api/staff/faces`                | Upload foto staf (multipart, field `photo` + `staffName`)      |
+| GET    | `/api/staff/faces/:id/photo`      | Serve file foto                                                |
+| DELETE | `/api/staff/faces/:id`            | Hapus satu foto                                                |
+| DELETE | `/api/staff/faces/by-name/:staffName` | Hapus semua foto satu staf (delete slot)                  |
+| GET    | `/api/staff/settings`             | Face recognition settings (threshold, retention)               |
+| PUT    | `/api/staff/settings`             | Update settings                                                |
 | GET    | `/api/cameras?search=&enabled=`   | List channel                                                  |
 | PUT    | `/api/cameras/:id`                | Rename/edit                                                   |
 | POST   | `/api/cameras/:id/test`           | Re-probe RTSP                                                 |
@@ -241,6 +272,7 @@ Streaming di grid pakai iframe/URL ke MediaMTX WebRTC endpoint (`http://<host>:8
 | `ANALYTICS_WORKER_TOKEN`     |       | Shared secret untuk internal endpoint worker→API               |
 | `ANALYTICS_RETENTION_DAYS`   |       | Retensi DwellEvent (default 30)                                |
 | `ANALYTICS_SNAPSHOT_DIR`     |       | Direktori snapshot (default `/tmp/snapshots`)                  |
+| `STAFF_FACE_DIR`             |       | Direktori foto staf face recognition (default `/tmp/staff-faces`, volume `staff_faces` shared dengan worker) |
 
 **Analytics Worker** (`apps/analytics-worker`):
 
@@ -255,6 +287,9 @@ Streaming di grid pakai iframe/URL ke MediaMTX WebRTC endpoint (`http://<host>:8
 | `ANALYTICS_TRACK_TIMEOUT_SECONDS`| `5.0`                    | Timeout track hilang sebelum tutup event      |
 | `ANALYTICS_SNAPSHOT_DIR`         | `/tmp/snapshots`         | Direktori snapshot                            |
 | `ANALYTICS_SYNC_INTERVAL_SECONDS`| `30.0`                   | Interval sync dengan API                      |
+| `ANALYTICS_MIN_DWELL_SECONDS`    | `30`                     | Durasi minimum event — event lebih pendek dibuang (filter lewat) |
+| `STAFF_FACE_DIR`                 | `/tmp/staff-faces`       | Direktori foto staf (shared dengan API)       |
+| `ONNX_PROVIDERS`                 | —                        | Provider onnxruntime untuk insightface (mis. `CoreMLExecutionProvider,CPUExecutionProvider` saat native macOS; default CPU) |
 
 **Web** (`apps/web`):
 
@@ -287,6 +322,23 @@ docker compose -f docker-compose.dev.yml --env-file .env.dev up --build
 ```
 
 Untuk perangkat LAN: pakai `http://<mac-ip>:3418`, pastikan IP-nya terdaftar di `NEXT_ALLOWED_DEV_ORIGINS` (`.env.dev`) **dan** di `webrtcAdditionalHosts` (`infra/mediamtx/mediamtx.orbstack.yml`).
+
+### Analytics worker native di macOS (performa tinggi)
+
+Worker analitik bisa dijalankan native (tanpa Docker) untuk akses CoreML/Apple Silicon — inference insightface 3–4x lebih cepat. Berguna saat development face recognition berat:
+
+```bash
+# Siapkan venv sekali
+cd apps/analytics-worker
+/opt/homebrew/opt/python@3.12/bin/python3.12 -m venv .venv
+.venv/bin/pip install ultralytics opencv-python-headless httpx insightface onnxruntime pydantic-settings
+
+# Stop worker di Docker, jalankan native
+docker compose -f docker-compose.dev.yml --env-file .env.dev stop analytics-worker
+bash run-native.sh   # aktifkan CoreML via ONNX_PROVIDERS, API → localhost:4418
+```
+
+Perlu port RTSP MediaMTX `8554` di-expose ke host (sudah ditambahkan di `docker-compose.dev.yml`).
 
 ### Production
 
@@ -379,6 +431,7 @@ Saat kamu (user) minta fitur baru, alur standarnya:
 
 - PRD MVP inti: `docs/PRD.md`
 - PRD modul dwell-time analytics (add-on): `docs/PRD-dwell-time-analytics.md`
+- PRD face recognition & laporan kehadiran: `docs/PRD-face-recognition.md`
 - Plan historis: `docs/plans/`
 - Plan implementasi analytics: `docs/plans/2026-08-11-dwell-time-analytics.md`
 - README onboarding: `README.md`
